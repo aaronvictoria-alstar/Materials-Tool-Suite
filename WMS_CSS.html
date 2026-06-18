@@ -1,0 +1,70 @@
+<style>
+  /* Smooth transitions for the "Spill" effect */
+  body { transition: background-color 0.4s ease; min-height: 100vh; }
+  .navbar { transition: background-color 0.4s ease; }
+ 
+  /* Isolate white text ONLY to the top Navbar */
+  .navbar-brand, .navbar .nav-link { color: white !important; }
+ 
+  #main-app { display: none; }
+ 
+  /* Base Tab Formatting (Unselected Main Tabs) */
+  .nav-tabs .nav-link { color: #495057 !important; font-weight: 600; border: none; }
+  .nav-tabs .nav-link:hover { background-color: rgba(0,0,0,0.05); }
+
+
+
+
+  /* Sub-Tab (Pills) Formatting (Unselected) - Lighter Grey */
+  .nav-pills .nav-link { color: #6c757d !important; font-weight: 600; transition: background-color 0.2s ease; }
+  .nav-pills .nav-link:hover { background-color: rgba(0,0,0,0.05); }
+
+
+
+
+  /* ========================================== */
+  /* THEME: RECEIVING (Alstar Red)              */
+  /* ========================================== */
+  body.theme-receiving { background-color: #fff0f2; }
+  body.theme-receiving .navbar { background-color: #c8102e !important; }
+  body.theme-receiving .nav-tabs .nav-link.active { background-color: #c8102e !important; color: white !important; border-radius: 6px 6px 0 0; }
+  body.theme-receiving .nav-pills .nav-link.active { background-color: #c8102e !important; color: white !important; }
+  body.theme-receiving .btn-theme-accent { background-color: #c8102e; color: white; border: none; }
+
+
+
+
+  /* ========================================== */
+  /* THEME: INVENTORY (Blue)                    */
+  /* ========================================== */
+  body.theme-inventory { background-color: #f0f7ff; }
+  body.theme-inventory .navbar { background-color: #0d6efd !important; }
+  body.theme-inventory .nav-tabs .nav-link.active { background-color: #0d6efd !important; color: white !important; border-radius: 6px 6px 0 0; }
+  body.theme-inventory .nav-pills .nav-link.active { background-color: #0d6efd !important; color: white !important; }
+
+
+
+
+  /* ========================================== */
+  /* THEME: KITTING (Green)                     */
+  /* ========================================== */
+  body.theme-kitting { background-color: #f0fff4; }
+  body.theme-kitting .navbar { background-color: #198754 !important; }
+  body.theme-kitting .nav-tabs .nav-link.active { background-color: #198754 !important; color: white !important; border-radius: 6px 6px 0 0; }
+  body.theme-kitting .nav-pills .nav-link.active { background-color: #198754 !important; color: white !important; }
+
+
+
+
+  /* Sliding animation for Client PO field */
+  #clientPoWrapper {
+    max-height: 0; opacity: 0; overflow: hidden;
+    transition: max-height 0.4s ease, opacity 0.4s ease;
+  }
+  #clientPoWrapper.show { max-height: 100px; opacity: 1; }
+ 
+  /* Camera UI */
+  #camera-container { display: none; text-align: center; }
+  video { width: 100%; max-width: 400px; border: 2px solid #ccc; border-radius: 8px; }
+  canvas { display: none; }
+</style>

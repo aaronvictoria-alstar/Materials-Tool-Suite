@@ -1,0 +1,21 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Optional clasp configuration file if credentials should be kept local
+# (Uncomment the line below if you want to keep clasp credentials local)
+# .clasp.json
+
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

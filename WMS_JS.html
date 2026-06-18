@@ -1,0 +1,342 @@
+<script>
+  // ==========================================
+  // 1. GLOBAL VARIABLES
+  // ==========================================
+  let currentUser = "";
+  let attachmentPayload = null; // Unifies both Uploads and Photos
+
+
+
+
+  // ==========================================
+  // 2. UI & NAVIGATION
+  // ==========================================
+  function login() {
+    const user = document.getElementById("userSelect").value;
+    if (!user) { alert("Please select a user profile."); return; }
+    currentUser = user;
+   
+    const loginScreen = document.getElementById("login-screen");
+    loginScreen.classList.remove("d-flex");
+    loginScreen.classList.add("d-none");
+   
+    document.getElementById("main-app").style.display = "block";
+    document.getElementById("displayUser").innerText = "👤 " + currentUser;
+  }
+
+
+
+
+  function setTheme(themeName) {
+    document.body.className = "theme-" + themeName;
+  }
+
+
+
+
+  function toggleClientPo() {
+    const toggle = document.getElementById("freeIssueToggle").checked;
+    const wrapper = document.getElementById("clientPoWrapper");
+    if (toggle) {
+      wrapper.classList.add("show");
+    } else {
+      wrapper.classList.remove("show");
+      document.getElementById("formClientPo").value = "";
+    }
+  }
+
+
+
+
+  // ==========================================
+  // 3. ATTACHMENT HANDLING (File Uploads)
+  // ==========================================
+  function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+
+
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      attachmentPayload = {
+        filename: file.name,
+        mimeType: file.type,
+        base64Data: e.target.result // Google needs this full Data URL string
+      };
+     
+      // Update UI
+      document.getElementById('upload-status').classList.remove('d-none');
+      document.getElementById('upload-filename').innerText = file.name;
+     
+      // Hide Camera and Form if they were open
+      document.getElementById("camera-container").style.display = "none";
+      document.getElementById("deliveryForm").style.display = "none";
+     
+      // Transform the Submit button
+      const submitBtn = document.getElementById("skipPhotoBtn");
+      submitBtn.innerText = "Confirm & Submit Delivery";
+      submitBtn.classList.replace('btn-outline-secondary', 'btn-success');
+    };
+    reader.readAsDataURL(file);
+  }
+
+
+
+
+  function clearAttachment() {
+    attachmentPayload = null;
+    document.getElementById('fileUploadInput').value = "";
+   
+    // Reset UI
+    document.getElementById('upload-status').classList.add('d-none');
+    document.getElementById('upload-filename').innerText = "";
+    document.getElementById("deliveryForm").style.display = "block";
+   
+    const submitBtn = document.getElementById("skipPhotoBtn");
+    submitBtn.innerText = "Skip Attachments & Submit";
+    submitBtn.classList.replace('btn-success', 'btn-outline-secondary');
+  }
+
+
+
+
+  // ==========================================
+  // 4. ATTACHMENT HANDLING (Camera)
+  // ==========================================
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  let stream;
+
+
+
+
+  async function startCamera() {
+    document.getElementById("deliveryForm").style.display = "none";
+    document.getElementById('upload-status').classList.add('d-none'); // Hide upload status if active
+    document.getElementById("camera-container").style.display = "block";
+   
+    const submitBtn = document.getElementById("skipPhotoBtn");
+    submitBtn.innerText = "Cancel Photo";
+    submitBtn.classList.replace('btn-success', 'btn-outline-secondary');
+   
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = stream;
+    } catch (err) {
+      alert("Camera access denied. Please ensure you have given your browser permission to use the camera.");
+      resetFormView();
+    }
+  }
+
+
+
+
+  function capturePhoto() {
+    const context = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+   
+    // Build payload mimicking a file upload
+    attachmentPayload = {
+      filename: "BOL_Capture_" + new Date().getTime() + ".jpg",
+      mimeType: "image/jpeg",
+      base64Data: canvas.toDataURL('image/jpeg')
+    };
+   
+    stream.getTracks().forEach(track => track.stop());
+    video.style.display = "none";
+   
+    document.getElementById("camera-controls").innerHTML = `
+      <p class="text-success fw-bold">✅ Photo Captured!</p>
+      <button class="btn btn-warning w-100 mb-2" onclick="resetFormView(); startCamera();">Retake Photo</button>
+    `;
+
+
+
+
+    const submitBtn = document.getElementById("skipPhotoBtn");
+    submitBtn.innerText = "Confirm & Submit Delivery";
+    submitBtn.classList.replace('btn-outline-secondary', 'btn-success');
+  }
+
+
+
+
+  function resetFormView() {
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    clearAttachment(); // Clears any saved payloads and resets buttons
+   
+    document.getElementById("camera-container").style.display = "none";
+    video.style.display = "block";
+    document.getElementById("camera-controls").innerHTML = `<button class="btn btn-outline-dark w-100" onclick="capturePhoto()">📸 Snap Photo</button>`;
+  }
+
+
+
+
+  // ==========================================
+  // 5. SUBMIT TO GOOGLE APPS SCRIPT
+  // ==========================================
+  function submitDelivery() {
+    const formData = {
+      unloader: currentUser,
+      job: document.getElementById("formJob").value,
+      po: document.getElementById("formPo").value,
+      vendor: document.getElementById("formVendor").value,
+      pl: document.getElementById("formPl").value,
+      type: document.getElementById("formType").value,
+      isFreeIssue: document.getElementById("freeIssueToggle").checked,
+      clientPo: document.getElementById("formClientPo").value,
+      timestamp: new Date().toLocaleString()
+    };
+
+
+
+
+    const submitBtn = document.getElementById("skipPhotoBtn");
+    submitBtn.innerText = "Submitting...";
+    submitBtn.disabled = true;
+   
+    google.script.run
+      .withSuccessHandler(function(response) {
+         alert("Delivery logged successfully!");
+         bootstrap.Modal.getInstance(document.getElementById('newDeliveryModal')).hide();
+         document.getElementById("deliveryForm").reset();
+         resetFormView();
+         submitBtn.disabled = false;
+      })
+      .withFailureHandler(function(error) {
+         alert("Error logging delivery: " + error.message);
+         submitBtn.innerText = "Confirm & Submit Delivery";
+         submitBtn.disabled = false;
+      })
+      .processNewDelivery(formData, attachmentPayload);
+  }
+
+
+
+
+  // ==========================================
+  // 6. DASHBOARD DATA FETCHING & RENDERING
+  // ==========================================
+ 
+  // Update the login function to auto-load the data when they enter the app!
+  function login() {
+    const user = document.getElementById("userSelect").value;
+    if (!user) { alert("Please select a user profile."); return; }
+    currentUser = user;
+   
+    const loginScreen = document.getElementById("login-screen");
+    loginScreen.classList.remove("d-flex");
+    loginScreen.classList.add("d-none");
+   
+    document.getElementById("main-app").style.display = "block";
+    document.getElementById("displayUser").innerText = "👤 " + currentUser;
+
+
+
+
+    // Trigger data load immediately after login!
+    loadDashboardData();
+  }
+
+
+
+
+  function loadDashboardData() {
+    // Show loading states
+    document.querySelector("#table-expected tbody").innerHTML = `<tr><td colspan="5" class="text-center text-muted p-4">⏳ Fetching Expected...</td></tr>`;
+    document.querySelector("#table-open tbody").innerHTML = `<tr><td colspan="5" class="text-center text-muted p-4">⏳ Fetching Open Log...</td></tr>`;
+    document.querySelector("#table-osd tbody").innerHTML = `<tr><td colspan="4" class="text-center text-muted p-4">⏳ Fetching Errors...</td></tr>`;
+
+
+
+
+    // Call backend
+    google.script.run
+      .withSuccessHandler(renderTables)
+      .withFailureHandler(err => alert("Error loading data: " + err.message))
+      .getReceivingDashboardData();
+  }
+
+
+
+
+  function renderTables(data) {
+    // 1. Render Expected Receiving
+    const expBody = document.querySelector("#table-expected tbody");
+    if (data.expected.length === 0) {
+      expBody.innerHTML = `<tr><td colspan="5" class="text-center text-muted p-4">No deliveries expected in this window.</td></tr>`;
+    } else {
+      expBody.innerHTML = data.expected.map(r => {
+        // Fallbacks based on common header names
+        let date = r['date'] || r['expected date'] || r['eta'] || "--";
+        if(date instanceof Date) date = new Date(date).toLocaleDateString();
+        return `
+          <tr>
+            <td class="fw-bold">${date}</td>
+            <td>${r['job #'] || r['job'] || '--'}</td>
+            <td>${r['vendor'] || '--'}</td>
+            <td>${r['po #'] || r['po'] || '--'}</td>
+            <td><span class="badge bg-warning text-dark">Expected</span></td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+
+
+
+    // 2. Render Open Receiving (RecLog2)
+    const openBody = document.querySelector("#table-open tbody");
+    if (data.open.length === 0) {
+      openBody.innerHTML = `<tr><td colspan="5" class="text-center text-muted p-4">No open receiving logs found.</td></tr>`;
+    } else {
+      openBody.innerHTML = data.open.map(r => {
+        let date = r['date'] || r['timestamp'] || "--";
+        if(date instanceof Date) date = new Date(date).toLocaleString();
+       
+        let link = r['bol link'] || r['bol'] || "";
+        let linkBtn = link.includes("http") ? `<a href="${link}" target="_blank" class="btn btn-sm btn-outline-primary">View</a>` : `<span class="text-muted small">No File</span>`;
+
+
+
+
+        return `
+          <tr>
+            <td class="small">${date}</td>
+            <td class="fw-bold text-primary">${r['receiver'] || r['unloader'] || '--'}</td>
+            <td>${r['job #'] || r['job'] || '--'}</td>
+            <td>${r['vendor'] || '--'}</td>
+            <td>${linkBtn}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+
+
+
+    // 3. Render OS&D
+    const osdBody = document.querySelector("#table-osd tbody");
+    if (data.osd.length === 0) {
+      osdBody.innerHTML = `<tr><td colspan="4" class="text-center text-muted p-4">No errors found.</td></tr>`;
+    } else {
+      osdBody.innerHTML = data.osd.map(r => {
+        let date = r['date'] || "--";
+        if(date instanceof Date) date = new Date(date).toLocaleDateString();
+        return `
+          <tr>
+            <td>${date}</td>
+            <td>${r['job #'] || r['job'] || '--'}</td>
+            <td>${r['po #'] || r['po'] || r['item'] || '--'}</td>
+            <td class="text-danger small text-wrap">${r['issue'] || r['notes'] || r['description'] || '--'}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+  }
+</script>

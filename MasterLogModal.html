@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: Arial, sans-serif; padding: 15px; color: #333; }
+    h3 { font-size: 16px; margin-top: 0; color: #d9534f; }
+    p { font-size: 14px; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
+    th { background-color: #f2f2f2; }
+    tr:hover { background-color: #f9f9f9; }
+    .btn { background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px; font-size: 14px; float: right; font-weight: bold;}
+    .btn:hover { background-color: #45a049; }
+    .loader { display: none; float: right; margin-right: 15px; font-style: italic; color: #666; margin-top: 10px; font-size: 15px;}
+  </style>
+</head>
+<body>
+  <h3>Select Shipment to Complete</h3>
+  <p>We found more than one open shipment in RecLog2 for this Job, PO, and Packing List combination. Please select the correct shipment below to log the End Receiving time:</p>
+ 
+  <form id="shipmentForm">
+    <table>
+      <tr>
+        <th style="text-align:center;">Select</th>
+        <th>Rec ID</th>
+        <th>Load Type</th>
+        <th>Actual Arrival</th>
+      </tr>
+      <? for (var i = 0; i < matches.length; i++) { ?>
+        <tr>
+          <td style="text-align:center;">
+            <input type="radio" name="selectedRow" value="<?= matches[i].rowIndex ?>" style="transform: scale(1.3);">
+          </td>
+          <td><b><?= matches[i].recId ?></b></td>
+          <td><?= matches[i].loadType ?></td>
+          <td><?= matches[i].arrival ?></td>
+        </tr>
+      <? } ?>
+    </table>
+    <button type="button" id="submitBtn" class="btn" onclick="submitSelection()">Log Selected Shipment</button>
+    <div id="loader" class="loader">Saving to Master Log...</div>
+  </form>
+
+
+
+
+  <script>
+    function submitSelection() {
+      const radios = document.getElementsByName('selectedRow');
+      let selectedRowIndex = null;
+      for (let i = 0; i < radios.length; i++) {
+        if (radios[i].checked) { selectedRowIndex = radios[i].value; break; }
+      }
+     
+      if (!selectedRowIndex) {
+        alert("Please select a shipment from the list.");
+        return;
+      }
+     
+      // Hide button and show the italicized loading text
+      document.getElementById('submitBtn').style.display = 'none';
+      const loader = document.getElementById('loader');
+      loader.style.display = 'block';
+     
+      // Pull the receiver name passed from the backend
+      const receiver = <?= JSON.stringify(receiver) ?>;
+
+
+
+
+      // Trigger the background save
+      google.script.run
+        .withSuccessHandler(function() {
+          // NEW UX: Replace loader with a green success message
+          loader.innerHTML = "✅ Success! Master Log updated.";
+          loader.style.color = "#2e7d32";
+          loader.style.fontWeight = "bold";
+          loader.style.fontStyle = "normal";
+         
+          // Wait 1.5 seconds, then close the modal automatically
+          setTimeout(function() {
+            google.script.host.close();
+          }, 1500);
+        })
+        .withFailureHandler(function(err) {
+          loader.innerHTML = "❌ Error: " + err.message;
+          loader.style.color = "#d9534f";
+          document.getElementById('submitBtn').style.display = 'block'; // Bring button back so they can try again
+        })
+        .processMasterLogModal(parseInt(selectedRowIndex, 10), receiver);
+    }
+  </script>
+</body>
+</html>
