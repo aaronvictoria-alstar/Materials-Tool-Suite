@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+    h3 { font-size: 18px; margin-top: 0; color: #198754; } /* Kitting Green */
+    p { font-size: 14px; margin-bottom: 20px; line-height: 1.4; }
+    .btn { background-color: #198754; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px; font-size: 14px; font-weight: bold; width: 100%; margin-top: 15px;}
+    .btn:hover { background-color: #146c43; }
+    .loader { display: none; text-align: center; font-style: italic; color: #666; margin-top: 15px; font-size: 15px; font-weight: bold;}
+    .radio-group { margin-bottom: 10px; font-size: 14px; }
+    .radio-group label { cursor: pointer; }
+    .radio-group input { transform: scale(1.2); margin-right: 8px; cursor: pointer; }
+    .input-group { margin-top: 10px; display: none; }
+    input[type="text"] { padding: 10px; width: 90%; border: 1px solid #ccc; border-radius: 4px; text-transform: uppercase; font-size: 14px;}
+  </style>
+</head>
+<body>
+  <h3>Select Sync Target</h3>
+  <p>The Bidirectional Heal scans your KT Batch History and external MMTs to synchronize missing post dates. <b>Scanning all jobs may take several minutes.</b></p>
+  
+  <form id="healForm">
+    <div class="radio-group">
+      <label><input type="radio" name="syncType" value="specific" checked onchange="toggleInput()"> 🎯 Target Specific Job (Fast)</label>
+    </div>
+    
+    <div id="jobInputGroup" class="input-group" style="display: block;">
+      <input type="text" id="jobNumInput" placeholder="Enter Job # (e.g. 123456)">
+    </div>
+
+    <div class="radio-group" style="margin-top: 15px;">
+      <label><input type="radio" name="syncType" value="all" onchange="toggleInput()"> 🔄 Scan Entire History (Slow)</label>
+    </div>
+
+    <button type="button" id="submitBtn" class="btn" onclick="submitSelection()">Run Sync</button>
+    <div id="loader" class="loader">Syncing... Please wait.</div>
+  </form>
+
+  <script>
+    function toggleInput() {
+      const type = document.querySelector('input[name="syncType"]:checked').value;
+      const inputGroup = document.getElementById('jobInputGroup');
+      if (type === 'specific') {
+        inputGroup.style.display = 'block';
+        document.getElementById('jobNumInput').focus();
+      } else {
+        inputGroup.style.display = 'none';
+      }
+    }
+
+    function submitSelection() {
+      const type = document.querySelector('input[name="syncType"]:checked').value;
+      let targetJob = "";
+
+      if (type === 'specific') {
+        targetJob = document.getElementById('jobNumInput').value.trim();
+        if (!targetJob) {
+          alert("Please enter a Job Number.");
+          return;
+        }
+      }
+
+      document.getElementById('submitBtn').style.display = 'none';
+      const loader = document.getElementById('loader');
+      loader.style.display = 'block';
+
+      google.script.run
+        .withSuccessHandler(function() {
+          loader.innerHTML = "✅ Success! Sync process complete.";
+          loader.style.color = "#198754";
+          loader.style.fontStyle = "normal";
+          setTimeout(function() { google.script.host.close(); }, 2000);
+        })
+        .withFailureHandler(function(err) {
+          loader.innerHTML = "❌ Error: " + err.message;
+          loader.style.color = "#d9534f";
+          document.getElementById('submitBtn').style.display = 'block';
+        })
+        .syncKittingHistoryAndMMTs(targetJob);
+    }
+  </script>
+</body>
+</html>

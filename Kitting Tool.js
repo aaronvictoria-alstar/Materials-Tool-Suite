@@ -483,7 +483,7 @@ function printKittingBatch() {
 // ==========================================
 // 12. KITTING TOOL: POST BATCH
 // ==========================================
-// Finalizes a batch by stamping completion dates to the Job Sheet History, QCPR (Issued), and MMT (Kitted).
+// Finalizes a batch by stamping completion dates to the Job Sheet History, QCPR (Issued), and MMT (Kitted). Uses surgical RangeLists to prevent ghost edits.
 function postKittingBatch() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ktSheet = ss.getSheetByName(KT_SHEET_NAME);
@@ -560,54 +560,59 @@ function postKittingBatch() {
 
   const coords = getJobCoordinatesFromGSID(jobNum);
   
-  // NEW: Added fabBom and fabDesc to the GSID requirements check
   if (!coords || !coords.qcprSpool || !coords.qcprIssued || !coords.fabKitted || !coords.fabItem || !coords.fabDraw || !coords.fabBom || !coords.fabDesc) {
      showAlert("Missing required coordinates in GSID. Ensure 'Kitted', 'Issued to Shop', 'Spool', 'BOM ID', and 'Description' columns are mapped.");
      return;
   }
 
+  // Column letter converter helper for surgical A1 mapping
+  const getColLetter = (colIdx) => {
+    let temp, letter = '';
+    while (colIdx > 0) {
+      temp   = (colIdx - 1) % 26;
+      letter = String.fromCharCode(temp + 65) + letter;
+      colIdx = (colIdx - temp - 1) / 26;
+    }
+    return letter;
+  };
+
   let updatedQcpr = false;
   let updatedMmt = false;
   
-  // --- UPDATE QCPR ---
+  // --- SURGICAL UPDATE: QCPR ---
   const qcprSS = getQcprSpreadsheet(jobNum);
-  
   if (qcprSS) {
     const fabSheet = qcprSS.getSheetByName("Fab Data");
-    
     if (fabSheet) {
       const fLastRow = fabSheet.getLastRow();
       const startRow = Math.min(coords.qcprSpool.dataRowStart, coords.qcprIssued.dataRowStart);
       
       if (fLastRow >= startRow) {
           const spoolColData = fabSheet.getRange(startRow, coords.qcprSpool.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
-          const issuedColData = fabSheet.getRange(startRow, coords.qcprIssued.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
-          let madeChanges = false;
+          const qcprIssuedLetter = getColLetter(coords.qcprIssued.colIdx + 1);
+          const qcprUpdateCells = [];
           
           for (let i = 0; i < spoolColData.length; i++) {
             const rawDraw = spoolColData[i][0] ? spoolColData[i][0].toString().toUpperCase().trim() : "";
             const cleanDraw = rawDraw.replace(/^[A-Z]+\s+/i, "");
 
             if (drawingsToPostMap.has(rawDraw) || drawingsToPostMap.has(cleanDraw)) {
-              issuedColData[i][0] = today;
-              madeChanges = true;
+              qcprUpdateCells.push(qcprIssuedLetter + (startRow + i));
             }
           }
 
-          if (madeChanges) {
-            fabSheet.getRange(startRow, coords.qcprIssued.colIdx + 1, issuedColData.length, 1).setValues(issuedColData);
+          if (qcprUpdateCells.length > 0) {
+            fabSheet.getRangeList(qcprUpdateCells).setValue(today);
             updatedQcpr = true;
           }
       }
     }
   }
 
-  // --- UPDATE MMT ---
+  // --- SURGICAL UPDATE: MMT ---
   const mmtSS = getTrackerSpreadsheet(jobNum);
-  
   if (mmtSS) {
     const mmtFabSheet = mmtSS.getSheetByName("Item Report-FAB");
-    
     if (mmtFabSheet) {
       const fLastRow = mmtFabSheet.getLastRow();
       const startRow = Math.min(coords.fabItem.dataRowStart, coords.fabDraw.dataRowStart, coords.fabKitted.dataRowStart);
@@ -615,13 +620,11 @@ function postKittingBatch() {
       if (fLastRow >= startRow) {
           const drawColData = mmtFabSheet.getRange(startRow, coords.fabDraw.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
           const itemColData = mmtFabSheet.getRange(startRow, coords.fabItem.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
-          const kittedColData = mmtFabSheet.getRange(startRow, coords.fabKitted.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
-          
-          // NEW: Grab BOM and Description to dynamically identify Pipe!
           const bomColData = mmtFabSheet.getRange(startRow, coords.fabBom.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
           const descColData = mmtFabSheet.getRange(startRow, coords.fabDesc.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
          
-          let madeChanges = false;
+          const mmtKittedLetter = getColLetter(coords.fabKitted.colIdx + 1);
+          const mmtUpdateCells = [];
           
           for (let i = 0; i < drawColData.length; i++) {
             const rawDraw = drawColData[i][0] ? drawColData[i][0].toString().toUpperCase().trim() : "";
@@ -631,25 +634,21 @@ function postKittingBatch() {
             const desc = descColData[i][0] ? descColData[i][0].toString().trim() : "";
 
             let matchedDraw = "";
-            
             if (drawingsToPostMap.has(rawDraw)) matchedDraw = rawDraw;
             else if (drawingsToPostMap.has(cleanDraw)) matchedDraw = cleanDraw;
             
             if (matchedDraw) {
               const requiredItems = drawingsToPostMap.get(matchedDraw);
-              
-              // THE FIX: Is it explicitly in our Kitting Batch, OR is it Pipe?
               const isPipe = getCategoryLogic(bom, desc).category === "Pipe";
              
               if (requiredItems.has(itemNo) || isPipe) {
-                kittedColData[i][0] = today;
-                madeChanges = true;
+                mmtUpdateCells.push(mmtKittedLetter + (startRow + i));
               }
             }
           }
 
-          if (madeChanges) {
-            mmtFabSheet.getRange(startRow, coords.fabKitted.colIdx + 1, kittedColData.length, 1).setValues(kittedColData);
+          if (mmtUpdateCells.length > 0) {
+            mmtFabSheet.getRangeList(mmtUpdateCells).setValue(today);
             updatedMmt = true;
           }
       }
@@ -657,7 +656,6 @@ function postKittingBatch() {
   }
 
   let finalMsg = `Successfully processed ${drawingsToPostMap.size} new drawing(s) for Posting!\n\n`;
-  
   finalMsg += "Updates:\n";
   finalMsg += `✅ KT Batch History\n`;
   finalMsg += updatedQcpr ? `✅ QCPR (Issued to Shop)\n` : `❌ QCPR (Skipped or Failed)\n`;
@@ -667,7 +665,198 @@ function postKittingBatch() {
 }
 
 // ==========================================
-// 13. KITTING TOOL: POST ALL BATCH
+// 15. ADMIN TOOLS: UI TRIGGER FOR HEAL MODAL
+// ==========================================
+// Serves the HTML modal allowing the user to select whether to scan all history or target a specific job.
+function showHealModal() {
+  const template = HtmlService.createTemplateFromFile("HealModal");
+  const html = template.evaluate().setWidth(400).setHeight(340);
+  SpreadsheetApp.getUi().showModalDialog(html, "🔧 Bidirectional Heal");
+}
+
+// ==========================================
+// 16. ADMIN TOOLS: BIDIRECTIONAL MMT / HISTORY SYNC
+// ==========================================
+// Scans the Kitting History to retroactively heal missing dates in the MMT, and vice-versa. 
+// Accepts an optional targetJob string to drastically speed up execution by ignoring unrelated history.
+function syncKittingHistoryAndMMTs(targetJob = "") {
+  // Normalize the input just in case it's triggered directly from a menu click event object
+  if (typeof targetJob === "object") targetJob = ""; 
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const histSheet = ss.getSheetByName("KT Batch History");
+  if (!histSheet) {
+    showAlert("Error: 'KT Batch History' sheet missing.");
+    return;
+  }
+
+  const isTargeted = typeof targetJob === "string" && targetJob.trim() !== "";
+  const jobFilter = isTargeted ? targetJob.toUpperCase().trim() : null;
+
+  ss.toast(isTargeted ? `Scanning Batch History for Job: ${jobFilter}...` : "Scanning entire Batch History... This may take a minute.", "Sync Tool Running", -1);
+  
+  // 1. Load History Data into Memory
+  const histData = histSheet.getDataRange().getValues();
+  const historyByJob = new Map();
+  
+  for (let r = 1; r < histData.length; r++) {
+    const job = histData[r][0] ? histData[r][0].toString().toUpperCase().trim() : "";
+    const draw = histData[r][1] ? histData[r][1].toString().toUpperCase().trim() : "";
+    const item = histData[r][2] ? histData[r][2].toString().trim() : "";
+    const postDate = histData[r][11]; // Date Posted (Col L)
+
+    if (!job || !draw) continue;
+    
+    // SURGICAL FILTER: If the user provided a job number, completely ignore rows belonging to other jobs
+    if (isTargeted && job !== jobFilter) continue;
+
+    if (!historyByJob.has(job)) historyByJob.set(job, { drawings: new Map() });
+
+    const jobData = historyByJob.get(job);
+    if (!jobData.drawings.has(draw)) {
+      jobData.drawings.set(draw, { postDate: postDate || null, items: new Set(), rowIndices: [] });
+    }
+
+    const drawData = jobData.drawings.get(draw);
+    if (item) drawData.items.add(item);
+    drawData.rowIndices.push(r);
+    
+    // If multiple items in a drawing have dates, capture the first one we see
+    if (postDate && !drawData.postDate) drawData.postDate = postDate;
+  }
+
+  const getColLetter = (colIdx) => {
+    let temp, letter = '';
+    while (colIdx > 0) {
+      temp   = (colIdx - 1) % 26;
+      letter = String.fromCharCode(temp + 65) + letter;
+      colIdx = (colIdx - temp - 1) / 26;
+    }
+    return letter;
+  };
+
+  let mmtUpdatesCount = 0;
+  let historyRowUpdatesCount = 0;
+  let pipeFixedCount = 0;
+  
+  // 2. Process Each Job Individually
+  for (const [jobNum, jobData] of historyByJob.entries()) {
+    ss.toast(`Syncing Job: ${jobNum}...`, "Sync Tool Running", 5);
+    const mmtSS = getTrackerSpreadsheet(jobNum);
+    const coords = getJobCoordinatesFromGSID(jobNum);
+   
+    if (!mmtSS || !coords || !coords.fabDraw || !coords.fabKitted || !coords.fabItem || !coords.fabBom || !coords.fabDesc) {
+      continue; // Skip if MMT or GSID mapping is invalid
+    }
+
+    const mmtFabSheet = mmtSS.getSheetByName("Item Report-FAB");
+    if (!mmtFabSheet) continue;
+
+    const startRow = Math.min(coords.fabItem.dataRowStart, coords.fabDraw.dataRowStart, coords.fabKitted.dataRowStart);
+    const fLastRow = mmtFabSheet.getLastRow();
+    if (fLastRow < startRow) continue;
+    
+    const drawColData = mmtFabSheet.getRange(startRow, coords.fabDraw.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
+    const itemColData = mmtFabSheet.getRange(startRow, coords.fabItem.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
+    const kittedColData = mmtFabSheet.getRange(startRow, coords.fabKitted.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
+    const bomColData = mmtFabSheet.getRange(startRow, coords.fabBom.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
+    const descColData = mmtFabSheet.getRange(startRow, coords.fabDesc.colIdx + 1, fLastRow - startRow + 1, 1).getValues();
+
+    // PASS 1: (MMT -> History) Find dates in MMT for drawings missing dates in History
+    const mmtDatesByDrawing = new Map();
+    for (let i = 0; i < drawColData.length; i++) {
+      const rawDraw = drawColData[i][0] ? drawColData[i][0].toString().toUpperCase().trim() : "";
+      const cleanDraw = rawDraw.replace(/^[A-Z]+\s+/i, "");
+      const kittedDate = kittedColData[i][0];
+      
+      if (kittedDate && kittedDate.toString().trim() !== "") {
+        if (rawDraw && !mmtDatesByDrawing.has(rawDraw)) mmtDatesByDrawing.set(rawDraw, kittedDate);
+        if (cleanDraw && !mmtDatesByDrawing.has(cleanDraw)) mmtDatesByDrawing.set(cleanDraw, kittedDate);
+      }
+    }
+
+    for (const [draw, drawData] of jobData.drawings.entries()) {
+      if (!drawData.postDate && mmtDatesByDrawing.has(draw)) {
+        const foundDate = mmtDatesByDrawing.get(draw);
+        drawData.postDate = foundDate; // Heal the memory
+
+        // Heal the History Sheet array directly
+        for (const rIdx of drawData.rowIndices) {
+          histData[rIdx][11] = foundDate;
+          historyRowUpdatesCount++;
+        }
+      }
+    }
+
+    // PASS 2: (History -> MMT) SURGICAL SYNC
+    const mmtKittedLetter = getColLetter(coords.fabKitted.colIdx + 1);
+    const mmtUpdatesByDate = {}; // Maps a specific date to an array of A1 cell coordinates
+    let mmtMadeChanges = false;
+
+    for (let i = 0; i < drawColData.length; i++) {
+      const rawDraw = drawColData[i][0] ? drawColData[i][0].toString().toUpperCase().trim() : "";
+      const cleanDraw = rawDraw.replace(/^[A-Z]+\s+/i, "");
+      const itemNo = itemColData[i][0] ? itemColData[i][0].toString().trim() : "";
+      const bom = bomColData[i][0] ? bomColData[i][0].toString().trim() : "";
+      const desc = descColData[i][0] ? descColData[i][0].toString().trim() : "";
+      const currentKitted = kittedColData[i][0];
+      
+      let matchedDraw = "";
+      if (jobData.drawings.has(rawDraw)) matchedDraw = rawDraw;
+      else if (jobData.drawings.has(cleanDraw)) matchedDraw = cleanDraw;
+      
+      if (matchedDraw) {
+        const drawData = jobData.drawings.get(matchedDraw);
+        if (drawData.postDate) {
+          const isPipe = getCategoryLogic(bom, desc).category === "Pipe";
+          // If it's Pipe OR it's an explicitly batched item...
+          if (drawData.items.has(itemNo) || isPipe) {
+            // ...and it doesn't already have a date stamped...
+            if (!currentKitted || currentKitted.toString().trim() === "") {
+              
+              // Queue it for the surgical strike!
+              const targetDateStr = drawData.postDate.toString(); 
+              if (!mmtUpdatesByDate[targetDateStr]) mmtUpdatesByDate[targetDateStr] = { dateObj: drawData.postDate, cells: [] };
+              
+              mmtUpdatesByDate[targetDateStr].cells.push(mmtKittedLetter + (startRow + i));
+              
+              mmtMadeChanges = true;
+              if (isPipe) pipeFixedCount++;
+            }
+          }
+        }
+      }
+    }
+
+    // Push surgical changes back to MMT grouped by date
+    if (mmtMadeChanges) {
+      for (const targetDate in mmtUpdatesByDate) {
+        const updateGroup = mmtUpdatesByDate[targetDate];
+        if (updateGroup.cells.length > 0) {
+          mmtFabSheet.getRangeList(updateGroup.cells).setValue(updateGroup.dateObj);
+        }
+      }
+      mmtUpdatesCount++;
+    }
+  }
+
+  // 3. Push changes back to History tab if we found missing dates
+  if (historyRowUpdatesCount > 0) {
+    histSheet.getRange(1, 1, histData.length, histData[0].length).setValues(histData);
+  }
+
+  ss.toast("Sync complete!", "Success", 3);
+ 
+  let finalMsg = `Bidirectional Sync Complete!\n\n`;
+  finalMsg += `🔄 MMTs Updated: ${mmtUpdatesCount} jobs repaired.\n`;
+  finalMsg += `🔧 Pipe Rows Fixed: ${pipeFixedCount} missing pipe stamps added to MMTs.\n`;
+  finalMsg += `📅 History Rows Healed: ${historyRowUpdatesCount} missing dates pulled from MMTs into KT Batch History.\n`;
+ 
+  showAlert(finalMsg);
+}
+
+// ==========================================
+// 17. KITTING TOOL: POST ALL BATCH
 // ==========================================
 // Automatically checks all valid drawings in the spool list and triggers the post sequence.
 function postAllKittingBatch() {

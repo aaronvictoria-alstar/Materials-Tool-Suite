@@ -110,7 +110,7 @@ function pushReceivingData() {
     // Track Location Override Checkbox
     const updateLocFlag = (iUpdateLoc > -1 && row[iUpdateLoc] === true);
     if (updateLocFlag && bomId) {
-      locationUpdates.push({ bom: bomId, loc: location });
+      locationUpdates.push({ bom: bomId, desc: matDesc, loc: location });
     }
 
     let newRow = new Array(tLastCol).fill("");
@@ -151,7 +151,7 @@ function pushReceivingData() {
     }
     
     // BATCH UPDATE: Overwrite Historical Locations in Job Sheet
-    if (locationUpdates.length > 0 && tCols.bom > -1 && tCols.po > -1 && tCols.loc > -1) {
+    if (locationUpdates.length > 0 && tCols.bom > -1 && tCols.desc > -1 && tCols.loc > -1) {
       const histLastRow = targetSheet.getLastRow();
       if (histLastRow > 1) { // 1 is header
         const histData = targetSheet.getRange(1, 1, histLastRow, tLastCol).getValues();
@@ -159,16 +159,14 @@ function pushReceivingData() {
         let madeHistChanges = false;
         
         for (let i = 1; i < histData.length; i++) {
-          const rBom = histData[i][tCols.bom] ? histData[i][tCols.bom].toString().trim().toUpperCase() : "";
-          const rPo  = histData[i][tCols.po] ? padPoNumber(histData[i][tCols.po]) : "";
+          const rBom  = histData[i][tCols.bom] ? histData[i][tCols.bom].toString().trim().toUpperCase() : "";
+          const rDesc = histData[i][tCols.desc] ? histData[i][tCols.desc].toString().trim().toUpperCase() : "";
           
-          if (rPo === paddedPo) {
-            // Find if this BOM is in our updates list
-            const match = locationUpdates.find(u => u.bom.toUpperCase() === rBom);
-            if (match) {
-              locColData[i][0] = match.loc;
-              madeHistChanges = true;
-            }
+          // Find if this BOM and Description combination is in our updates list
+          const match = locationUpdates.find(u => u.bom.toUpperCase() === rBom && u.desc.toUpperCase() === rDesc);
+          if (match) {
+            locColData[i][0] = match.loc;
+            madeHistChanges = true;
           }
         }
         

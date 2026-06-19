@@ -55,7 +55,7 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('🛠️ Admin Tools')
     .addItem('Update GSID Database', 'updateGSIDDatabase')
-    .addItem('Bidirectional Heal (MMT ⇆ KT History)', 'syncKittingHistoryAndMMTs')
+    .addItem('Bidirectional Heal (MMT ⇆ KT History)', 'showHealModal')
     .addToUi();
 }
 
