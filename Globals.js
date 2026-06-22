@@ -97,7 +97,7 @@ function fetchQcprStats(jobNum, globalDrawings) {
       const fabData = fabSheet.getRange(1, 1, fLastRow, fLastCol).getValues();
       for (let i = 2; i < fabData.length; i++) {
         const rawDraw   = fabData[i][cSpool] ? fabData[i][cSpool].toString().toUpperCase().trim() : "";
-        const cleanDraw = rawDraw.replace(/^[A-Z]+\s+/i, "");
+        const cleanDraw = cleanDrawingNumber(rawDraw);
 
         if (globalDrawings.has(rawDraw) || globalDrawings.has(cleanDraw)) {
           matchesFound++;

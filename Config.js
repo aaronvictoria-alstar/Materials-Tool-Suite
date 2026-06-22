@@ -57,12 +57,53 @@ function onOpen() {
     .addItem('Update GSID Database', 'updateGSIDDatabase')
     .addItem('Bidirectional Heal (MMT ⇆ KT History)', 'showHealModal')
     .addToUi();
+  
+  // Programmatically guarantee the nightly background trigger is active
+  try { ensureDailyGSIDTrigger(); } catch (e) {}
 }
 
 // ==========================================
 // CORE DRY HELPERS
 // ==========================================
 // Lightweight, reusable utilities used globally for formatting headers, finding safe rows, fetching inputs, and triggering alerts.
+
+// Converts column index numbers (e.g. 1, 27) directly into standard spreadsheet A1 notation column letters (e.g. A, AA)
+function getColLetter(colIdx) {
+  let temp, letter = '';
+  while (colIdx > 0) {
+    temp   = (colIdx - 1) % 26;
+    letter = String.fromCharCode(temp + 65) + letter;
+    colIdx = (colIdx - temp - 1) / 26;
+  }
+  return letter;
+}
+
+// Normalizes and cleans drawing codes by stripping alphabetic prefixes and leading/trailing whitespace
+function cleanDrawingNumber(rawDraw) {
+  if (!rawDraw && rawDraw !== 0) return "";
+  return rawDraw.toString().toUpperCase().trim().replace(/^[A-Z]+\s+/i, "");
+}
+
+// Converts millimeter measurements from VISTA databases directly into yards/feet
+function convertMmToFt(mmVal) {
+  return (parseFloat(mmVal) || 0) / 304.8;
+}
+
+// Applies the standardized 10% Pipe Tolerance Rule to reconcile yard receiving totals against MMT records
+function isWithinPipeTolerance(val1, val2) {
+  const v1 = parseFloat(val1) || 0;
+  const v2 = parseFloat(val2) || 0;
+  const diff = Math.abs(v1 - v2);
+  const tolerance = Math.max(v1, v2) * 0.10 + 0.05;
+  return diff <= tolerance;
+}
+
+// Normalizes and formats raw multi-line strings into standard newline-delimited lists
+function formatMultiLine(str) {
+  if (!str && str !== 0) return "";
+  return str.toString().split(/[\n,;]+/).map(s => s.trim()).filter(Boolean).join("\n");
+}
+
 function parseCoordStr(str) {
   if (!str || str === "❌" || !str.includes("R")) return null;
   const rMatch = str.match(/R(\d+)/);

@@ -354,13 +354,11 @@ function loadPivotData() {
     const isPipe = item.bom.includes("PIPE");
    
     if (isPipe) {
-      mmtRecv = mmtRecv / 304.8;
-      mmtReq = mmtReq / 304.8;
+      mmtRecv = convertMmToFt(mmtRecv);
+      mmtReq = convertMmToFt(mmtReq);
      
       // 10% PIPE TOLERANCE LOGIC (TOTALS)
-      const diff = Math.abs(shopQty - mmtRecv);
-      const tolerance = Math.max(shopQty, mmtRecv) * 0.10 + 0.05;
-      if (diff <= tolerance) {
+      if (isWithinPipeTolerance(shopQty, mmtRecv)) {
         shopQty = mmtRecv;
       }
     }
@@ -408,14 +406,12 @@ function loadPivotData() {
 
 
       let mQ = (mInfo.pos[po] || 0);
-      if (isPipe) mQ = mQ / 304.8;
+      if (isPipe) mQ = convertMmToFt(mQ);
      
       let iQ = (item.poDetails && item.poDetails[po] ? item.poDetails[po].qty : 0);
      
-      if (isPipe) {
-        const poDiff = Math.abs(iQ - mQ);
-        const poTolerance = Math.max(iQ, mQ) * 0.10 + 0.05;
-        if (poDiff <= poTolerance) iQ = mQ;
+      if (isPipe && isWithinPipeTolerance(iQ, mQ)) {
+        iQ = mQ;
       }
      
       const delta = iQ - mQ;

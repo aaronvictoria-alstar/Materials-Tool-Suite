@@ -11,15 +11,6 @@ function updateGSIDDatabase() {
 
   const lastRow = gsidSheet.getLastRow();
   if (lastRow < 2) return;
-  const getColLetter = (colIdx) => {
-    let temp, letter = '';
-    while (colIdx > 0) {
-      temp   = (colIdx - 1) % 26;
-      letter = String.fromCharCode(temp + 65) + letter;
-      colIdx = (colIdx - temp - 1) / 26;
-    }
-    return letter;
-  };
 
   const findHeaderCoord = (dataGrid, searchKeys, strict = false) => {
     for (let r = dataGrid.length - 1; r >= 0; r--) {
@@ -197,4 +188,19 @@ function updateGSIDDatabase() {
 
   // UPDATED RANGE WIDTH TO 36
   gsidSheet.getRange(2, 2, newData.length, 36).setValues(newData);
+}
+
+// Programmatically verifies and constructs a daily nightly background trigger for the GSID database
+function ensureDailyGSIDTrigger() {
+  const triggerName = "updateGSIDDatabase";
+  const triggers = ScriptApp.getProjectTriggers();
+  const exists = triggers.some(t => t.getHandlerFunction() === triggerName);
+  
+  if (!exists) {
+    ScriptApp.newTrigger(triggerName)
+      .timeBased()
+      .everyDays(1)
+      .atHour(2) // Run nightly at 2:00 AM (safe, non-disruptive time)
+      .create();
+  }
 }

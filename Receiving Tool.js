@@ -88,11 +88,6 @@ function pushReceivingData() {
   const rowsToPush = [];
   const locationUpdates = []; // Collects historical location overwrites
   
-  const formatMultiLine = (str) => {
-    if (!str) return "";
-    return str.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean).join("\n");
-  };
-  
   for (const row of itemData) {
     const recUnits = iRec > -1 ? row[iRec].toString().trim() : "";
     if (recUnits === "" || recUnits === "0") continue;
@@ -275,8 +270,8 @@ function searchAndPullFromVista() {
   const pulledItems = [];
   for (const [, item] of pulledMap) {
     if (item.bom.includes("PIPE")) {
-      item.ordered = (item.ordered / 304.8);
-      item.vistaRecv = (item.vistaRecv / 304.8);
+      item.ordered = convertMmToFt(item.ordered);
+      item.vistaRecv = convertMmToFt(item.vistaRecv);
     }
     const catInfo = getCategoryLogic(item.bom, item.desc);
     item.cat = catInfo.category; item.subcat = catInfo.subcat;
@@ -373,8 +368,9 @@ function searchAndPullFromVista() {
     let isShort = false;
     let statusFlag = ""; 
     if (item.bom.includes("PIPE")) {
-      isShort = localRecvThisPo < (item.ordered * 0.90);
-      if (!isShort && localRecvThisPo < item.ordered) {
+      const hasTolerance = isWithinPipeTolerance(localRecvThisPo, item.ordered);
+      isShort = !hasTolerance && (localRecvThisPo < item.ordered);
+      if (hasTolerance && localRecvThisPo < item.ordered) {
         statusFlag = "COMPLETE_TOLERANCE";
       }
     } else {

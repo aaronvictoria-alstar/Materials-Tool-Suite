@@ -114,7 +114,7 @@ function searchAndPullKittingDrawing() {
 
   for (const row of fabData) {
     const rawDraw  = row[coords.fabDraw.colIdx] ? row[coords.fabDraw.colIdx].toString().toUpperCase().trim() : "";
-    const cleanDraw = rawDraw.replace(/^[A-Z]+\s+/i, "");
+    const cleanDraw = cleanDrawingNumber(rawDraw);
     let matchedDraw = "";
     for (const target of searchTargets) {
       if (target.regex.test(rawDraw) || target.regex.test(cleanDraw)) {
@@ -565,17 +565,6 @@ function postKittingBatch() {
      return;
   }
 
-  // Column letter converter helper for surgical A1 mapping
-  const getColLetter = (colIdx) => {
-    let temp, letter = '';
-    while (colIdx > 0) {
-      temp   = (colIdx - 1) % 26;
-      letter = String.fromCharCode(temp + 65) + letter;
-      colIdx = (colIdx - temp - 1) / 26;
-    }
-    return letter;
-  };
-
   let updatedQcpr = false;
   let updatedMmt = false;
   
@@ -594,7 +583,7 @@ function postKittingBatch() {
           
           for (let i = 0; i < spoolColData.length; i++) {
             const rawDraw = spoolColData[i][0] ? spoolColData[i][0].toString().toUpperCase().trim() : "";
-            const cleanDraw = rawDraw.replace(/^[A-Z]+\s+/i, "");
+            const cleanDraw = cleanDrawingNumber(rawDraw);
 
             if (drawingsToPostMap.has(rawDraw) || drawingsToPostMap.has(cleanDraw)) {
               qcprUpdateCells.push(qcprIssuedLetter + (startRow + i));
@@ -628,7 +617,7 @@ function postKittingBatch() {
           
           for (let i = 0; i < drawColData.length; i++) {
             const rawDraw = drawColData[i][0] ? drawColData[i][0].toString().toUpperCase().trim() : "";
-            const cleanDraw = rawDraw.replace(/^[A-Z]+\s+/i, "");
+            const cleanDraw = cleanDrawingNumber(rawDraw);
             const itemNo = itemColData[i][0] ? itemColData[i][0].toString().trim() : "";
             const bom = bomColData[i][0] ? bomColData[i][0].toString().trim() : "";
             const desc = descColData[i][0] ? descColData[i][0].toString().trim() : "";
@@ -721,19 +710,8 @@ function syncKittingHistoryAndMMTs(targetJob = "") {
     if (item) drawData.items.add(item);
     drawData.rowIndices.push(r);
     
-    // If multiple items in a drawing have dates, capture the first one we see
     if (postDate && !drawData.postDate) drawData.postDate = postDate;
   }
-
-  const getColLetter = (colIdx) => {
-    let temp, letter = '';
-    while (colIdx > 0) {
-      temp   = (colIdx - 1) % 26;
-      letter = String.fromCharCode(temp + 65) + letter;
-      colIdx = (colIdx - temp - 1) / 26;
-    }
-    return letter;
-  };
 
   let mmtUpdatesCount = 0;
   let historyRowUpdatesCount = 0;
