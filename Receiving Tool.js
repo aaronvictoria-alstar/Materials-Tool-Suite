@@ -252,11 +252,6 @@ function searchAndPullFromVista() {
         pulledMap.get(mapKey).ordered += rawOrdered;
         pulledMap.get(mapKey).vistaRecv += rawVistaRecv;
         if (rawPoLine) pulledMap.get(mapKey).poLines.add(rawPoLine);
-        
-        // Consolidate onto the cleaner, shorter master description if needed
-        if (rawDesc && rawDesc.length < pulledMap.get(mapKey).desc.length) {
-          pulledMap.get(mapKey).desc = rawDesc;
-        }
       } else {
         pulledMap.set(mapKey, { 
           desc: rawDesc, bom: rawBom, 
