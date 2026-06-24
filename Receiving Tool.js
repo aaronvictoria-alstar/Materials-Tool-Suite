@@ -246,12 +246,17 @@ function searchAndPullFromVista() {
       const rawDesc   = row[coords.vistaDesc.colIdx].toString().trim();
       const rawPoLine = (coords.vistaPoLine && row[coords.vistaPoLine.colIdx]) ? row[coords.vistaPoLine.colIdx].toString().trim() : "";
       
-      const mapKey    = rawDesc + "|||" + rawBom;
+      const mapKey    = getUnifiedItemKey(rawBom, rawDesc);
 
       if (pulledMap.has(mapKey)) {
         pulledMap.get(mapKey).ordered += rawOrdered;
         pulledMap.get(mapKey).vistaRecv += rawVistaRecv;
         if (rawPoLine) pulledMap.get(mapKey).poLines.add(rawPoLine);
+        
+        // Consolidate onto the cleaner, shorter master description if needed
+        if (rawDesc && rawDesc.length < pulledMap.get(mapKey).desc.length) {
+          pulledMap.get(mapKey).desc = rawDesc;
+        }
       } else {
         pulledMap.set(mapKey, { 
           desc: rawDesc, bom: rawBom, 
@@ -328,7 +333,7 @@ function searchAndPullFromVista() {
         const hLoc  = hLocCol  > -1 ? row[hLocCol].toString().trim()  : "";
         const hQty  = hQtyCol  > -1 ? parseFloat(row[hQtyCol]) || 0 : 0; 
 
-        const hMapKey = hDesc + "|||" + hBom;
+        const hMapKey = getUnifiedItemKey(hBom, hDesc);
 
         if (!historyMap[hMapKey]) historyMap[hMapKey] = { heats: new Set(), locs: new Set(), localRecvThisPo: 0 };
         if (isMatchPO) {
@@ -348,7 +353,7 @@ function searchAndPullFromVista() {
   const pushArr = { poLine: [], desc: [], bom: [], qty: [], qtyNotes: [], heat1: [], heat2: [], loc: [], updateLoc: [], notes: [], bgColors: [], sysStatus: [] };
   
   for (const item of pulledItems) {
-    const searchMapKey = item.desc + "|||" + item.bom;
+    const searchMapKey = getUnifiedItemKey(item.bom, item.desc);
     const hist = historyMap[searchMapKey];
     const localRecvThisPo = hist ? hist.localRecvThisPo : 0;
     

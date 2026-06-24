@@ -241,3 +241,34 @@ function getJobCoordinatesFromGSID(jobNum) {
   }
   return null;
 }
+
+// ==========================================
+// UPGRADED INTELLIGENT MATCHING & DE-DUPLICATION HELPERS
+// ==========================================
+
+// Normalizes descriptions by removing drawing tags, circuit IDs, context suffixes (C/W, WITH, FOR) and double spacing
+function normalizeDescription(desc) {
+  if (!desc && desc !== 0) return "";
+  let d = desc.toString().toUpperCase().trim();
+  // Replace multiple spaces with single space
+  d = d.replace(/\s+/g, " ");
+  // Remove TAG / CIRCUIT ID patterns: TAG #123, TAG 123, CIRCUIT ID: 123, etc.
+  d = d.replace(/(?:TAG|CIRCUIT ID)[\s#:]+([A-Z0-9\-]+)/g, "");
+  // Remove context suffixes starting with C/W, W/, WITH, FOR
+  d = d.replace(/(?:\bC\/W\b|\bW\/\b|\bWITH\b|\bFOR\b)(.*)/, "");
+  // Standardize spaces again after replacements
+  d = d.replace(/\s+/g, " ");
+  return d.trim();
+}
+
+// Generates a unified matching key. Groups by BOM ID if present, otherwise groups by normalized description.
+function getUnifiedItemKey(bomId, description) {
+  const cleanBom = (bomId || "").toString().trim().toUpperCase();
+  if (cleanBom) {
+    return cleanBom;
+  }
+  // If no BOM ID, group by normalized description
+  const cleanDesc = normalizeDescription(description);
+  // Strip non-alphanumeric characters for sheet/key mapping robustness
+  return "NOBOM_" + cleanDesc.replace(/[^A-Z0-9]/g, "_");
+}

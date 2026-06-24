@@ -123,7 +123,7 @@ function loadPivotData() {
 
 
   const mmtData = mmtSheet.getDataRange().getValues();
-  let headerRowIdx = -1, cMmtBom = -1, cMmtReq = -1, cMmtRecv = -1;
+  let headerRowIdx = -1, cMmtBom = -1, cMmtReq = -1, cMmtRecv = -1, cMmtDesc = -1;
 
 
 
@@ -133,12 +133,13 @@ function loadPivotData() {
     const bomIdx = tempHeaders.indexOf("BOM ID");
     const reqIdx = findCol(tempHeaders, ["Total Required on all Drawings", "Total Required"]);
     const recvIdx = findCol(tempHeaders, ["Vista Received QTY", "Vista Received"]);
+    const descIdx = findCol(tempHeaders, ["Description", "Item Description", "Material Description"]);
 
 
 
 
     if (bomIdx > -1 && reqIdx > -1) {
-      headerRowIdx = i; cMmtBom = bomIdx; cMmtReq = reqIdx; cMmtRecv = recvIdx;
+      headerRowIdx = i; cMmtBom = bomIdx; cMmtReq = reqIdx; cMmtRecv = recvIdx; cMmtDesc = descIdx;
       break;
     }
   }
@@ -160,13 +161,17 @@ function loadPivotData() {
     const bomId = String(mmtData[i][cMmtBom]).trim().toUpperCase();
     const reqQty = parseFloat(mmtData[i][cMmtReq]) || 0;
     const recvQty = cMmtRecv > -1 ? (parseFloat(mmtData[i][cMmtRecv]) || 0) : 0;
+    const mmtDesc = cMmtDesc > -1 ? String(mmtData[i][cMmtDesc]).trim() : "";
    
     if (bomId) {
       if (!mmtInfo[bomId]) {
-        mmtInfo[bomId] = { req: reqQty, recv: recvQty, pos: {} };
+        mmtInfo[bomId] = { req: reqQty, recv: recvQty, pos: {}, desc: mmtDesc };
       } else {
         mmtInfo[bomId].req = Math.max(mmtInfo[bomId].req, reqQty);
         mmtInfo[bomId].recv = Math.max(mmtInfo[bomId].recv, recvQty);
+        if (mmtDesc && !mmtInfo[bomId].desc) {
+          mmtInfo[bomId].desc = mmtDesc;
+        }
       }
     }
   }
@@ -185,6 +190,7 @@ function loadPivotData() {
       const cvBom = coords.vistaBom.colIdx;
       const cvPo = coords.vistaPo.colIdx;
       const cvRecv = coords.vistaQtyRecv.colIdx;
+      const cvDesc = coords.vistaDesc ? coords.vistaDesc.colIdx : -1;
 
 
 
@@ -193,24 +199,30 @@ function loadPivotData() {
         const bomId = String(vData[i][cvBom]).trim().toUpperCase();
         const recvQty = parseFloat(vData[i][cvRecv]) || 0;
         const rawPo = String(vData[i][cvPo]).trim().toUpperCase();
+        const rawDesc = cvDesc > -1 ? String(vData[i][cvDesc]).trim() : "";
 
 
 
 
-        if (bomId && recvQty !== 0 && mmtInfo[bomId]) {
-          let mmtPo = rawPo.replace(/[^0-9A-Z]/g, "");
-          if (jobBase && mmtPo.startsWith(jobBase)) {
-            const remaining = mmtPo.substring(jobBase.length);
-            if (jobLetter && remaining.startsWith(jobLetter)) mmtPo = remaining.substring(jobLetter.length);
-            else mmtPo = remaining;
+        if (bomId && mmtInfo[bomId]) {
+          if (rawDesc && !mmtInfo[bomId].desc) {
+            mmtInfo[bomId].desc = rawDesc;
           }
-          if (/^\d+$/.test(mmtPo)) mmtPo = mmtPo.padStart(4, '0');
+          if (recvQty !== 0) {
+            let mmtPo = rawPo.replace(/[^0-9A-Z]/g, "");
+            if (jobBase && mmtPo.startsWith(jobBase)) {
+              const remaining = mmtPo.substring(jobBase.length);
+              if (jobLetter && remaining.startsWith(jobLetter)) mmtPo = remaining.substring(jobLetter.length);
+              else mmtPo = remaining;
+            }
+            if (/^\d+$/.test(mmtPo)) mmtPo = mmtPo.padStart(4, '0');
 
 
 
 
-          if (!mmtInfo[bomId].pos[mmtPo]) mmtInfo[bomId].pos[mmtPo] = 0;
-          mmtInfo[bomId].pos[mmtPo] += recvQty;
+            if (!mmtInfo[bomId].pos[mmtPo]) mmtInfo[bomId].pos[mmtPo] = 0;
+            mmtInfo[bomId].pos[mmtPo] += recvQty;
+          }
         }
       }
     } else {
@@ -265,7 +277,7 @@ function loadPivotData() {
   for (let i = 1; i < historyData.length; i++) {
     const row = historyData[i];
     const type = String(row[hTypeCol]).trim().toUpperCase();
-    const bomId = String(row[hBomCol]).trim().toUpperCase();
+    const bomId = hBomCol > -1 ? String(row[hBomCol]).trim().toUpperCase() : "";
     const desc = hDescCol > -1 ? String(row[hDescCol]).trim() : "";
     const qty = parseFloat(row[hQtyCol]) || 0;
     const heat = hHeatCol > -1 ? String(row[hHeatCol]).trim() : "";
@@ -277,12 +289,10 @@ function loadPivotData() {
     let invPo = rawPo;
     if (/^\d+$/.test(invPo)) invPo = invPo.padStart(4, '0');
    
-    if (!bomId || qty === 0) continue;
+    if (qty === 0) continue;
+    if (!bomId && !desc) continue; // Skip only if both are blank
 
-
-
-
-    const mapKey = desc + "|||" + bomId;
+    const mapKey = getUnifiedItemKey(bomId, desc);
 
 
 
@@ -297,7 +307,8 @@ function loadPivotData() {
         heats: new Set(),
         locs: new Set(),
         tags: new Set(),
-        poDetails: {}
+        poDetails: {},
+        loggedDescriptions: new Set([desc]) // Keep track of logged descriptions to detect drafting mismatches
       });
     }
 
@@ -305,6 +316,7 @@ function loadPivotData() {
 
 
     const item = inventoryMap.get(mapKey);
+    item.loggedDescriptions.add(desc);
 
 
 
@@ -342,16 +354,37 @@ function loadPivotData() {
   const outputArray = [];
  
   for (const [, item] of inventoryMap) {
-    const mInfo = mmtInfo[item.bom] || { req: 0, recv: 0, pos: {} };
+    const mInfo = mmtInfo[item.bom] || { req: 0, recv: 0, pos: {}, desc: "" };
    
     let shopQty = item.netQty;
     let mmtRecv = mInfo.recv;
     let mmtReq  = mInfo.req;
 
+    // Default to the yard description, but prefer MMT's master engineering description if available
+    let displayDesc = item.desc;
+    if (mInfo.desc) {
+      displayDesc = mInfo.desc;
+    }
+
+    // Run category discrepancy checks under the same BOM ID to find drafting mistakes
+    let isDraftingConflict = false;
+    let conflictWarning = "";
+    if (item.bom && mInfo.desc) {
+      const mmtCategory = getCategoryLogic(item.bom, mInfo.desc);
+      for (const loggedD of item.loggedDescriptions) {
+        const yardCategory = getCategoryLogic(item.bom, loggedD);
+        if (yardCategory.category !== mmtCategory.category || Math.abs(yardCategory.size - mmtCategory.size) > 0.05) {
+          isDraftingConflict = true;
+          conflictWarning = `⚠️ drafting error: BOM ID defined as ${mmtCategory.category} (${mmtCategory.size}") in MMT, but logged as ${yardCategory.category} (${yardCategory.size}") in Yard!`;
+          break;
+        }
+      }
+    }
 
 
 
-    const isPipe = item.bom.includes("PIPE");
+
+    const isPipe = item.bom ? item.bom.includes("PIPE") : false;
    
     if (isPipe) {
       mmtRecv = convertMmToFt(mmtRecv);
@@ -419,7 +452,10 @@ function loadPivotData() {
       if (Math.abs(delta) > 0.05) {
         const plArray = item.poDetails && item.poDetails[po] ? Array.from(item.poDetails[po].pls) : [];
         const plStr = plArray.length > 0 ? plArray.join(", ") : "None Logged";
-        const hoverNote = `--- PO: ${po} ---\nBOM Required (Total): ${fmt(mmtReq)}\nMMT Logged (This PO): ${fmt(mQ)}\nShop Received (This PO): ${fmt(iQ)}\nPacking List(s): ${plStr}`;
+        let hoverNote = `--- PO: ${po} ---\nBOM Required (Total): ${fmt(mmtReq)}\nMMT Logged (This PO): ${fmt(mQ)}\nShop Received (This PO): ${fmt(iQ)}\nPacking List(s): ${plStr}`;
+        if (isDraftingConflict && conflictWarning) {
+          hoverNote = `🚨 DRAFTING DISCREPANCY DETECTED 🚨\n${conflictWarning}\n\n` + hoverNote;
+        }
         poStrings.push({ text: `${po} (${fmt(mQ)}) ⚠️ (${fmtDelta(delta)})`, note: hoverNote });
       }
     }
@@ -438,12 +474,15 @@ function loadPivotData() {
 
 
 
+    // If there is a drafting conflict, prepend a warning icon to the displayed description
+    const finalDisplayDesc = isDraftingConflict ? "⚠️ " + displayDesc : displayDesc;
+
     // Always push to array (Filter is handled via row hiding!)
     outputArray.push([
-      item.cat,                  // 0
-      item.sub,                  // 1
-      item.bom,                  // 2
-      item.desc,                 // 3
+      item.cat || "Misc",        // 0
+      item.sub || "Misc",        // 1
+      item.bom || "NO_BOM",      // 2
+      finalDisplayDesc,          // 3
       tagStr,                    // 4
       heatCol1.join("\n") || "--", // 5
       heatCol2.join("\n") || "",   // 6
