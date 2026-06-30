@@ -561,54 +561,136 @@ function loadPivotData() {
  
   const maxRows = pivotSheet.getMaxRows();
   if (maxRows >= OUTPUT_START_ROW) {
-    pivotSheet.getRange(OUTPUT_START_ROW, 1, maxRows - OUTPUT_START_ROW + 1, CLEAR_COLS)
-              .breakApart()
-              .clearContent()
-              .clearNote()
-              .setBackground(null)
-              .setFontWeight("normal");
+    const clearRange = pivotSheet.getRange(OUTPUT_START_ROW, 1, maxRows - OUTPUT_START_ROW + 1, CLEAR_COLS);
+    clearRange.breakApart().clearContent().clearNote()
+              .setBackground(null).setFontWeight("normal").setFontStyle("normal");
+    // Remove existing row groups and BasicFilter so they don't stack on reload
+    try { for (let d = 0; d < 8; d++) clearRange.shiftRowGroupDepth(-1); } catch (e) {}
+    const existingFilter = pivotSheet.getFilter();
+    if (existingFilter) existingFilter.remove();
   }
 
 
 
 
   if (finalValues.length > 0) {
-    const headers = [["Category", "Subcategory", "BOMID", "Description", "Tag #", "Heats", "", "Locations", "Shop Qty Recv", "MMT Qty Recv", "Delta\n(Shop vs MMT)", "MMT Qty Req", "Delta\n(MMT vs Req)", "POs w/ Delta\n(Shop vs MMT)"]];
-    const headerRange = pivotSheet.getRange(OUTPUT_START_ROW, 1, 1, NUM_COLS);
-   
-    headerRange.setValues(headers).setFontWeight("bold").setBackground("#f3f3f3");
-    pivotSheet.getRange(OUTPUT_START_ROW, 6, 1, 2).mergeAcross();
-   
-    const dataRange = pivotSheet.getRange(OUTPUT_START_ROW + 1, 1, finalValues.length, NUM_COLS);
-    dataRange.setValues(finalValues);
-    dataRange.setNotes(finalNotes);
-   
-    const bgColors = [];
+    const DATA_START_ROW = OUTPUT_START_ROW + 1;
+
+    const CATEGORY_COLORS = {
+      "Pipe": "#d9ead3", "Flange": "#c9daf8", "Fittings": "#fff2cc",
+      "Valve": "#fce5cd", "Support": "#d9d9d9", "Bolt-Up & Gaskets": "#ead1dc",
+      "Grayloc": "#d9d2e9", "Instrument": "#d0e0e3", "Misc": "#f3f3f3",
+      "Electrical": "#ffd966", "Structural": "#b6d7a8", "Flange Protector": "#f4cccc"
+    };
+
+    // --- BUILD STRUCTURED ROWS (category headers → subcategory headers → data rows) ---
+    const rowsToWrite = [], notesToWrite = [], rowTypes = [], rowCats = [], rowSubs = [];
+    let lastCat = null, lastSub = null;
+
     for (let i = 0; i < finalValues.length; i++) {
-      const dShopMmt = parseFloat(finalValues[i][10]);
-      const dMmtReq  = parseFloat(finalValues[i][12]);
-      const rowColors = new Array(NUM_COLS).fill(null);
-     
-      if (Math.abs(dShopMmt) > 0.05) rowColors[10] = "#FFF2CC";
-      else rowColors[10] = "#d9ead3";
+      const val = finalValues[i];
+      const cat = val[0], sub = val[1];
 
+      if (cat !== lastCat) {
+        const catRow = new Array(NUM_COLS).fill("");
+        catRow[0] = cat;
+        rowsToWrite.push(catRow); notesToWrite.push(new Array(NUM_COLS).fill(""));
+        rowTypes.push('cat'); rowCats.push(cat); rowSubs.push('');
+        lastCat = cat; lastSub = null;
+      }
 
+      if (sub !== lastSub) {
+        const subRow = new Array(NUM_COLS).fill("");
+        subRow[0] = cat; subRow[1] = sub; // keep cat value so column filters still match
+        rowsToWrite.push(subRow); notesToWrite.push(new Array(NUM_COLS).fill(""));
+        rowTypes.push('sub'); rowCats.push(cat); rowSubs.push(sub);
+        lastSub = sub;
+      }
 
-
-      if (dMmtReq < -0.05) rowColors[12] = "#f4cccc";
-      else rowColors[12] = "#d9ead3";
-
-
-
-
-      bgColors.push(rowColors);
+      rowsToWrite.push(finalValues[i]); notesToWrite.push(finalNotes[i]);
+      rowTypes.push('data'); rowCats.push(cat); rowSubs.push(sub);
     }
-    dataRange.setBackgrounds(bgColors);
+
+    const totalRows = rowsToWrite.length;
+
+    // --- WRITE COLUMN HEADERS ---
+    const headers = [["Category", "Subcategory", "BOMID", "Description", "Tag #", "Heats", "", "Locations", "Shop Qty Recv", "MMT Qty Recv", "Delta\n(Shop vs MMT)", "MMT Qty Req", "Delta\n(MMT vs Req)", "POs w/ Delta\n(Shop vs MMT)"]];
+    pivotSheet.getRange(OUTPUT_START_ROW, 1, 1, NUM_COLS)
+              .setValues(headers).setFontWeight("bold").setBackground("#f3f3f3");
+    pivotSheet.getRange(OUTPUT_START_ROW, 6, 1, 2).mergeAcross();
+
+    // --- WRITE ALL ROWS ---
+    const allDataRange = pivotSheet.getRange(DATA_START_ROW, 1, totalRows, NUM_COLS);
+    allDataRange.setValues(rowsToWrite);
+    allDataRange.setNotes(notesToWrite);
+
+    // --- FORMAT: build delta colors for data rows, then apply category/subcat header styles ---
+    const bgColors = new Array(totalRows).fill(null).map(() => new Array(NUM_COLS).fill(null));
+    const catHeaderRows = [], subHeaderRows = [];
+
+    for (let i = 0; i < totalRows; i++) {
+      const type = rowTypes[i];
+      if (type === 'cat') {
+        catHeaderRows.push({ sheetRow: DATA_START_ROW + i, cat: rowCats[i] });
+      } else if (type === 'sub') {
+        subHeaderRows.push(DATA_START_ROW + i);
+      } else {
+        const dShopMmt = parseFloat(rowsToWrite[i][10]);
+        const dMmtReq  = parseFloat(rowsToWrite[i][12]);
+        bgColors[i][10] = Math.abs(dShopMmt) > 0.05 ? "#FFF2CC" : "#d9ead3";
+        bgColors[i][12] = dMmtReq < -0.05 ? "#f4cccc" : "#d9ead3";
+      }
+    }
+
+    allDataRange.setBackgrounds(bgColors);
+
+    for (const { sheetRow, cat } of catHeaderRows) {
+      pivotSheet.getRange(sheetRow, 1, 1, NUM_COLS)
+                .setBackground(CATEGORY_COLORS[cat] || "#f3f3f3")
+                .setFontWeight("bold");
+    }
+    for (const sheetRow of subHeaderRows) {
+      pivotSheet.getRange(sheetRow, 1, 1, NUM_COLS)
+                .setBackground("#f0f0f0")
+                .setFontStyle("italic");
+    }
+
+    // --- ROW GROUPS: 2-level collapsible outline ---
+    // Depth 1 = all rows inside a category collapse under its header
+    // Depth 2 = data rows inside a subcategory additionally collapse under its header
+    const catGroupRanges = [], subGroupRanges = [];
+    let catGroupStart = -1, subGroupStart = -1;
+
+    for (let i = 0; i < totalRows; i++) {
+      const sheetRow = DATA_START_ROW + i;
+      const type = rowTypes[i];
+
+      if (type === 'cat') {
+        if (catGroupStart > 0) catGroupRanges.push({ start: catGroupStart, end: sheetRow - 1 });
+        if (subGroupStart > 0) { subGroupRanges.push({ start: subGroupStart, end: sheetRow - 1 }); subGroupStart = -1; }
+        catGroupStart = sheetRow + 1;
+      } else if (type === 'sub') {
+        if (subGroupStart > 0) subGroupRanges.push({ start: subGroupStart, end: sheetRow - 1 });
+        subGroupStart = sheetRow + 1;
+      }
+    }
+    const lastRow = DATA_START_ROW + totalRows - 1;
+    if (catGroupStart > 0 && catGroupStart <= lastRow) catGroupRanges.push({ start: catGroupStart, end: lastRow });
+    if (subGroupStart > 0 && subGroupStart <= lastRow) subGroupRanges.push({ start: subGroupStart, end: lastRow });
+
+    for (const g of catGroupRanges) {
+      if (g.end >= g.start) pivotSheet.getRange(g.start, 1, g.end - g.start + 1, 1).shiftRowGroupDepth(1);
+    }
+    for (const g of subGroupRanges) {
+      if (g.end >= g.start) pivotSheet.getRange(g.start, 1, g.end - g.start + 1, 1).shiftRowGroupDepth(1);
+    }
+
+    // --- BASIC FILTER on the column header row + all structured rows ---
+    pivotSheet.getRange(OUTPUT_START_ROW, 1, totalRows + 1, NUM_COLS).createFilter();
+
     pivotSheet.autoResizeColumns(1, NUM_COLS);
-   
-    // --- IMMEDIATELY APPLY THE FILTER BASED ON THE CHECKBOX ---
     applyBalancedFilter(pivotSheet, isShowBalanced);
-   
+
     showAlert(`Successfully loaded Dashboard. Balanced rows are ${isShowBalanced ? 'SHOWN' : 'HIDDEN'}.`);
   } else {
     showAlert("No inventory to display.");
