@@ -586,12 +586,14 @@ function loadPivotData() {
 
   // 4. PRINT TO PIVOT TOOL UI
   const OUTPUT_START_ROW = 6;
+  const DATA_START_ROW = OUTPUT_START_ROW + 1;
   const NUM_COLS = 16;
   const CLEAR_COLS = 17;
- 
+
+  // Header row (OUTPUT_START_ROW) already exists statically in the sheet — only clear data rows below it
   const maxRows = pivotSheet.getMaxRows();
-  if (maxRows >= OUTPUT_START_ROW) {
-    const clearRange = pivotSheet.getRange(OUTPUT_START_ROW, 1, maxRows - OUTPUT_START_ROW + 1, CLEAR_COLS);
+  if (maxRows >= DATA_START_ROW) {
+    const clearRange = pivotSheet.getRange(DATA_START_ROW, 1, maxRows - DATA_START_ROW + 1, CLEAR_COLS);
     clearRange.breakApart().clearContent().clearNote()
               .setBackground(null).setFontWeight("normal").setFontStyle("normal");
     // Remove existing row groups and BasicFilter so they don't stack on reload
@@ -604,8 +606,6 @@ function loadPivotData() {
 
 
   if (finalValues.length > 0) {
-    const DATA_START_ROW = OUTPUT_START_ROW + 1;
-
     const CATEGORY_COLORS = {
       "Pipe": "#d9ead3", "Flange": "#c9daf8", "Fittings": "#fff2cc",
       "Valve": "#fce5cd", "Support": "#d9d9d9", "Bolt-Up & Gaskets": "#ead1dc",
@@ -643,13 +643,7 @@ function loadPivotData() {
 
     const totalRows = rowsToWrite.length;
 
-    // --- WRITE COLUMN HEADERS ---
-    const headers = [["Category", "Subcategory", "BOMID", "Description", "Tag #", "Heats", "", "Locations", "Shop Qty Recv", "MMT Qty Recv", "Delta\n(Shop vs MMT)", "MMT Qty Req", "Delta\n(MMT vs Req)", "POs w/ Delta\n(Shop vs MMT)", "Quarantined", "Kitted"]];
-    pivotSheet.getRange(OUTPUT_START_ROW, 1, 1, NUM_COLS)
-              .setValues(headers).setFontWeight("bold").setBackground("#f3f3f3");
-    pivotSheet.getRange(OUTPUT_START_ROW, 6, 1, 2).mergeAcross();
-
-    // --- WRITE ALL ROWS ---
+    // --- WRITE ALL ROWS (headers are static in the sheet, not rewritten here) ---
     const allDataRange = pivotSheet.getRange(DATA_START_ROW, 1, totalRows, NUM_COLS);
     allDataRange.setValues(rowsToWrite);
     allDataRange.setNotes(notesToWrite);
