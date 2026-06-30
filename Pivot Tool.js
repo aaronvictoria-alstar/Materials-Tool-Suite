@@ -537,8 +537,8 @@ function loadPivotData() {
     outputArray.push([
       item.cat || "Misc",          // 0
       item.sub || "Misc",          // 1
-      item.bom || "NO_BOM",        // 2
-      finalDisplayDesc,            // 3
+      finalDisplayDesc,            // 2
+      item.bom || "NO_BOM",        // 3
       tagStr,                      // 4
       heatCol1.join("\n") || "--", // 5
       heatCol2.join("\n") || "",   // 6
@@ -564,7 +564,7 @@ function loadPivotData() {
     if (weightA !== weightB) return weightA - weightB;
     const subCmp = a[1].localeCompare(b[1]);
     if (subCmp !== 0) return subCmp;
-    return a[2].localeCompare(b[2]);
+    return a[3].localeCompare(b[3]); // BOMID tiebreak (now at index 3)
   });
 
 
