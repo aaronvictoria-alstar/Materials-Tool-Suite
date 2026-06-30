@@ -292,7 +292,7 @@ function loadPivotData() {
     if (qty === 0) continue;
     if (!bomId && !desc) continue; // Skip only if both are blank
 
-    const mapKey = getUnifiedItemKey(bomId, desc);
+    const mapKey = bomId ? bomId : `NOBOM_${normalizeDescription(desc).replace(/[^A-Z0-9]/g, "_")}`;
 
 
 

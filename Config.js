@@ -252,6 +252,8 @@ function normalizeDescription(desc) {
   let d = desc.toString().toUpperCase().trim();
   // Replace multiple spaces with single space
   d = d.replace(/\s+/g, " ");
+  // Strip parenthetical pure-numeric values (e.g., wall thickness "(21.41)" or "(0.500)")
+  d = d.replace(/\(\s*[\d.]+\s*\)/g, "");
   // Remove TAG / CIRCUIT ID patterns: TAG #123, TAG 123, CIRCUIT ID: 123, etc.
   d = d.replace(/(?:TAG|CIRCUIT ID)[\s#:]+([A-Z0-9\-]+)/g, "");
   // Remove context suffixes starting with C/W, W/, WITH, FOR
