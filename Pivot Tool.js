@@ -292,7 +292,7 @@ function loadPivotData() {
     if (qty === 0) continue;
     if (!bomId && !desc) continue; // Skip only if both are blank
 
-    const mapKey = bomId ? bomId : `NOBOM_${normalizeDescription(desc).replace(/[^A-Z0-9]/g, "_")}`;
+    const mapKey = getUnifiedItemKey(bomId, desc);
 
 
 
@@ -363,12 +363,28 @@ function loadPivotData() {
     }
   }
 
+  // Sum all description variants by BOM ID so delta calculations compare the
+  // total yard quantity against the MMT total (e.g. all olet run sizes combined)
+  const bomAggMap = {};
+  for (const [, item] of inventoryMap) {
+    if (!item.bom) continue;
+    if (!bomAggMap[item.bom]) bomAggMap[item.bom] = { netQty: 0, poDetails: {} };
+    bomAggMap[item.bom].netQty += item.netQty;
+    for (const po in item.poDetails) {
+      if (!bomAggMap[item.bom].poDetails[po]) bomAggMap[item.bom].poDetails[po] = { qty: 0, pls: new Set() };
+      bomAggMap[item.bom].poDetails[po].qty += item.poDetails[po].qty;
+      item.poDetails[po].pls.forEach(pl => bomAggMap[item.bom].poDetails[po].pls.add(pl));
+    }
+  }
+
   const outputArray = [];
- 
+
   for (const [, item] of inventoryMap) {
     const mInfo = mmtInfo[item.bom] || { req: 0, recv: 0, pos: {}, desc: "" };
-   
-    let shopQty = item.netQty;
+
+    const bomAgg = item.bom && bomAggMap[item.bom] ? bomAggMap[item.bom] : null;
+    let shopQty = bomAgg ? bomAgg.netQty : item.netQty;
+    const shopPoDetails = bomAgg ? bomAgg.poDetails : item.poDetails;
     let mmtRecv = mInfo.recv;
     let mmtReq  = mInfo.req;
 
@@ -438,7 +454,7 @@ function loadPivotData() {
 
 
     // --- PO LOGIC & STRING BUILDER (WITH NOTES) ---
-    const allUniquePos = new Set([...Object.keys(mInfo.pos || {}), ...Object.keys(item.poDetails || {})]);
+    const allUniquePos = new Set([...Object.keys(mInfo.pos || {}), ...Object.keys(shopPoDetails || {})]);
     const poStrings = [];
 
 
@@ -453,7 +469,7 @@ function loadPivotData() {
       let mQ = (mInfo.pos[po] || 0);
       if (isPipe) mQ = convertMmToFt(mQ);
      
-      let iQ = (item.poDetails && item.poDetails[po] ? item.poDetails[po].qty : 0);
+      let iQ = (shopPoDetails && shopPoDetails[po] ? shopPoDetails[po].qty : 0);
      
       if (isPipe && isWithinPipeTolerance(iQ, mQ)) {
         iQ = mQ;
@@ -462,7 +478,7 @@ function loadPivotData() {
       const delta = iQ - mQ;
      
       if (Math.abs(delta) > 0.05) {
-        const plArray = item.poDetails && item.poDetails[po] ? Array.from(item.poDetails[po].pls) : [];
+        const plArray = shopPoDetails && shopPoDetails[po] ? Array.from(shopPoDetails[po].pls) : [];
         const plStr = plArray.length > 0 ? plArray.join(", ") : "None Logged";
         let hoverNote = `--- PO: ${po} ---\nBOM Required (Total): ${fmt(mmtReq)}\nMMT Logged (This PO): ${fmt(mQ)}\nShop Received (This PO): ${fmt(iQ)}\nPacking List(s): ${plStr}`;
         if (isDraftingConflict && conflictWarning) {
