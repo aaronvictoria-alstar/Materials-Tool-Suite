@@ -306,8 +306,11 @@ function loadPivotData() {
         netQty: 0,
         heats: new Set(),
         locs: new Set(),
+        issuedLocs: new Set(),
         tags: new Set(),
         poDetails: {},
+        kittedQty: 0,
+        quarantinedQty: 0,
         loggedDescriptions: new Set([desc]), // Keep track of logged descriptions to detect drafting mismatches
         descCounts: desc ? { [desc]: 1 } : {}
       });
@@ -325,26 +328,42 @@ function loadPivotData() {
 
     if (type === "REC" || type === "RETURN") {
       item.netQty += qty;
-     
+
       if (invPo) {
         if (!item.poDetails[invPo]) item.poDetails[invPo] = { qty: 0, pls: new Set() };
         item.poDetails[invPo].qty += qty;
         if (formVal) item.poDetails[invPo].pls.add(formVal);
       }
-     
+
     } else if (type === "KITTED" || type === "KIT" || type === "ISSUED" || type === "ISSUE") {
       item.netQty -= qty;
+      item.kittedQty += qty;
     }
 
-
-
+    // Track issued-out and quarantine locations from every row regardless of type
+    if (loc) {
+      loc.split(/[\n,;]+/).forEach(l => {
+        const cleanL = l.trim();
+        if (!cleanL) return;
+        const upperL = cleanL.toUpperCase();
+        if (upperL === "QUARANTINE") {
+          item.quarantinedQty += qty;
+        } else if (/^(K\+?R|ASSY|ASSEMBLY|STRUCTURAL|STRATUS|HYDRO|PAINT)$/.test(upperL)) {
+          item.issuedLocs.add(cleanL);
+        }
+      });
+    }
 
     if (item.netQty > 0) {
       if (heat) heat.split(/[\n,;]+/).forEach(h => { if (h.trim()) item.heats.add(h.trim()); });
       if (tag) tag.split(/[\n,;]+/).forEach(t => { if (t.trim()) item.tags.add(t.trim()); });
       if (loc) loc.split(/[\n,;]+/).forEach(l => {
         const cleanL = l.trim();
-        if (cleanL && !["K+R", "QUARANTINE", "LEGACY"].includes(cleanL.toUpperCase())) item.locs.add(cleanL);
+        if (!cleanL) return;
+        const upperL = cleanL.toUpperCase();
+        if (!["QUARANTINE", "LEGACY"].includes(upperL) && !/^(K\+?R|ASSY|ASSEMBLY|STRUCTURAL|STRATUS|HYDRO|PAINT)$/.test(upperL)) {
+          item.locs.add(cleanL);
+        }
       });
     }
   }
@@ -436,7 +455,9 @@ function loadPivotData() {
 
 
 
-    const locStr = Array.from(item.locs).sort().join("\n") || "NO LOCATION";
+    const regularLocs = Array.from(item.locs).sort();
+    const issuedOut = Array.from(item.issuedLocs).sort().map(l => "⚑ " + l);
+    const locStr = [...regularLocs, ...issuedOut].join("\n") || "NO LOCATION";
     const tagStr = Array.from(item.tags).sort().join("\n") || "--";
 
 
@@ -505,23 +526,28 @@ function loadPivotData() {
     // If there is a drafting conflict, prepend a warning icon to the displayed description
     const finalDisplayDesc = isDraftingConflict ? "⚠️ " + displayDesc : displayDesc;
 
+    const quarantinedStr = item.quarantinedQty > 0 ? fmt(item.quarantinedQty) : "";
+    const kittedStr      = item.kittedQty > 0      ? fmt(item.kittedQty)      : "";
+
     // Always push to array (Filter is handled via row hiding!)
     outputArray.push([
-      item.cat || "Misc",        // 0
-      item.sub || "Misc",        // 1
-      item.bom || "NO_BOM",      // 2
-      finalDisplayDesc,          // 3
-      tagStr,                    // 4
+      item.cat || "Misc",          // 0
+      item.sub || "Misc",          // 1
+      item.bom || "NO_BOM",        // 2
+      finalDisplayDesc,            // 3
+      tagStr,                      // 4
       heatCol1.join("\n") || "--", // 5
       heatCol2.join("\n") || "",   // 6
-      locStr,                    // 7
-      fmt(shopQty),              // 8
-      fmt(mmtRecv),              // 9
-      fmtDelta(deltaShopMmt),    // 10
-      fmt(mmtReq),               // 11
-      fmtDelta(deltaMmtReq),     // 12
-      poCol.join("\n") || "",    // 13
-      noteCol.join("\n\n")       // 14
+      locStr,                      // 7
+      fmt(shopQty),                // 8
+      fmt(mmtRecv),                // 9
+      fmtDelta(deltaShopMmt),      // 10
+      fmt(mmtReq),                 // 11
+      fmtDelta(deltaMmtReq),       // 12
+      poCol.join("\n") || "",      // 13
+      quarantinedStr,              // 14
+      kittedStr,                   // 15
+      noteCol.join("\n\n")         // 16 (notes only — not written to sheet)
     ]);
   }
 
@@ -545,9 +571,9 @@ function loadPivotData() {
  
   for (let i = 0; i < outputArray.length; i++) {
     const row = outputArray[i];
-    finalValues.push(row.slice(0, 14));
-    const noteRow = new Array(14).fill("");
-    noteRow[13] = row[14] || "";
+    finalValues.push(row.slice(0, 16));
+    const noteRow = new Array(16).fill("");
+    noteRow[13] = row[16] || "";
     finalNotes.push(noteRow);
   }
 
@@ -556,8 +582,8 @@ function loadPivotData() {
 
   // 4. PRINT TO PIVOT TOOL UI
   const OUTPUT_START_ROW = 6;
-  const NUM_COLS = 14;
-  const CLEAR_COLS = 15;
+  const NUM_COLS = 16;
+  const CLEAR_COLS = 17;
  
   const maxRows = pivotSheet.getMaxRows();
   if (maxRows >= OUTPUT_START_ROW) {
@@ -614,7 +640,7 @@ function loadPivotData() {
     const totalRows = rowsToWrite.length;
 
     // --- WRITE COLUMN HEADERS ---
-    const headers = [["Category", "Subcategory", "BOMID", "Description", "Tag #", "Heats", "", "Locations", "Shop Qty Recv", "MMT Qty Recv", "Delta\n(Shop vs MMT)", "MMT Qty Req", "Delta\n(MMT vs Req)", "POs w/ Delta\n(Shop vs MMT)"]];
+    const headers = [["Category", "Subcategory", "BOMID", "Description", "Tag #", "Heats", "", "Locations", "Shop Qty Recv", "MMT Qty Recv", "Delta\n(Shop vs MMT)", "MMT Qty Req", "Delta\n(MMT vs Req)", "POs w/ Delta\n(Shop vs MMT)", "Quarantined", "Kitted"]];
     pivotSheet.getRange(OUTPUT_START_ROW, 1, 1, NUM_COLS)
               .setValues(headers).setFontWeight("bold").setBackground("#f3f3f3");
     pivotSheet.getRange(OUTPUT_START_ROW, 6, 1, 2).mergeAcross();
@@ -639,6 +665,8 @@ function loadPivotData() {
         const dMmtReq  = parseFloat(rowsToWrite[i][12]);
         bgColors[i][10] = Math.abs(dShopMmt) > 0.05 ? "#FFF2CC" : "#d9ead3";
         bgColors[i][12] = dMmtReq < -0.05 ? "#f4cccc" : "#d9ead3";
+        if (rowsToWrite[i][14]) bgColors[i][14] = "#FFD966"; // amber: quarantined items present
+        if (rowsToWrite[i][15]) bgColors[i][15] = "#c9daf8"; // blue: kitted items present
       }
     }
 
