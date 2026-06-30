@@ -326,7 +326,7 @@ function loadPivotData() {
 
 
 
-    if (type === "REC" || type === "RETURN") {
+    if (type === "REC" || type === "RETURN" || type === "SURPLUS" || type === "TRANSFER IN") {
       item.netQty += qty;
 
       if (invPo) {
@@ -334,9 +334,6 @@ function loadPivotData() {
         item.poDetails[invPo].qty += qty;
         if (formVal) item.poDetails[invPo].pls.add(formVal);
       }
-
-    } else if (type === "SURPLUS" || type === "TRANSFER IN") {
-      item.netQty += qty;
 
     } else if (type === "KITTED // ISSUED" || type === "KITTED" || type === "KIT" || type === "ISSUED" || type === "ISSUE") {
       item.netQty -= qty;
@@ -346,8 +343,8 @@ function loadPivotData() {
       item.netQty -= qty;
 
     } else if (type === "QUARANTINE") {
+      item.netQty -= qty;
       item.quarantinedQty += qty;
-      // Quarantine items are not counted as available stock
     }
 
     // Track issued-out locations from every row for the Locations column display
