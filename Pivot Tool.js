@@ -335,20 +335,27 @@ function loadPivotData() {
         if (formVal) item.poDetails[invPo].pls.add(formVal);
       }
 
-    } else if (type === "KITTED" || type === "KIT" || type === "ISSUED" || type === "ISSUE") {
+    } else if (type === "SURPLUS" || type === "TRANSFER IN") {
+      item.netQty += qty;
+
+    } else if (type === "KITTED // ISSUED" || type === "KITTED" || type === "KIT" || type === "ISSUED" || type === "ISSUE") {
       item.netQty -= qty;
       item.kittedQty += qty;
+
+    } else if (type === "TRANSFER OUT") {
+      item.netQty -= qty;
+
+    } else if (type === "QUARANTINE") {
+      item.quarantinedQty += qty;
+      // Quarantine items are not counted as available stock
     }
 
-    // Track issued-out and quarantine locations from every row regardless of type
+    // Track issued-out locations from every row for the Locations column display
     if (loc) {
       loc.split(/[\n,;]+/).forEach(l => {
         const cleanL = l.trim();
         if (!cleanL) return;
-        const upperL = cleanL.toUpperCase();
-        if (upperL === "QUARANTINE") {
-          item.quarantinedQty += qty;
-        } else if (/^(K\+?R|ASSY|ASSEMBLY|STRUCTURAL|STRATUS|HYDRO|PAINT)$/.test(upperL)) {
+        if (/^(K\+?R|ASSY|ASSEMBLY|STRUCTURAL|STRATUS|HYDRO|PAINT)$/i.test(cleanL)) {
           item.issuedLocs.add(cleanL);
         }
       });
