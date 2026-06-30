@@ -308,7 +308,8 @@ function loadPivotData() {
         locs: new Set(),
         tags: new Set(),
         poDetails: {},
-        loggedDescriptions: new Set([desc]) // Keep track of logged descriptions to detect drafting mismatches
+        loggedDescriptions: new Set([desc]), // Keep track of logged descriptions to detect drafting mismatches
+        descCounts: desc ? { [desc]: 1 } : {}
       });
     }
 
@@ -317,6 +318,7 @@ function loadPivotData() {
 
     const item = inventoryMap.get(mapKey);
     item.loggedDescriptions.add(desc);
+    if (desc) item.descCounts[desc] = (item.descCounts[desc] || 0) + 1;
 
 
 
@@ -351,6 +353,16 @@ function loadPivotData() {
 
 
   // 3. MERGE & CALCULATE DELTAS
+  for (const [, item] of inventoryMap) {
+    if (item.descCounts && Object.keys(item.descCounts).length > 0) {
+      let bestDesc = item.desc, maxCount = 0;
+      for (const d in item.descCounts) {
+        if (item.descCounts[d] > maxCount) { maxCount = item.descCounts[d]; bestDesc = d; }
+      }
+      item.desc = bestDesc;
+    }
+  }
+
   const outputArray = [];
  
   for (const [, item] of inventoryMap) {
@@ -360,9 +372,9 @@ function loadPivotData() {
     let mmtRecv = mInfo.recv;
     let mmtReq  = mInfo.req;
 
-    // Default to the yard description, but prefer MMT's master engineering description if available
+    // Prefer the yard description; only use MMT desc when it normalizes identically (better formatting, not a different item)
     let displayDesc = item.desc;
-    if (mInfo.desc) {
+    if (mInfo.desc && normalizeDescription(mInfo.desc) === normalizeDescription(item.desc)) {
       displayDesc = mInfo.desc;
     }
 

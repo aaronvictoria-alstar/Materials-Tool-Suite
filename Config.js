@@ -264,11 +264,11 @@ function normalizeDescription(desc) {
 // Generates a unified matching key. Groups by BOM ID if present, otherwise groups by normalized description.
 function getUnifiedItemKey(bomId, description) {
   const cleanBom = (bomId || "").toString().trim().toUpperCase();
+  const cleanDesc = normalizeDescription(description);
+  const safeDesc = cleanDesc.replace(/[^A-Z0-9]/g, "_");
   if (cleanBom) {
-    return cleanBom;
+    return cleanBom + "_" + safeDesc;
   }
   // If no BOM ID, group by normalized description
-  const cleanDesc = normalizeDescription(description);
-  // Strip non-alphanumeric characters for sheet/key mapping robustness
-  return "NOBOM_" + cleanDesc.replace(/[^A-Z0-9]/g, "_");
+  return "NOBOM_" + safeDesc;
 }

@@ -249,14 +249,19 @@ function searchAndPullFromVista() {
       const mapKey    = getUnifiedItemKey(rawBom, rawDesc);
 
       if (pulledMap.has(mapKey)) {
-        pulledMap.get(mapKey).ordered += rawOrdered;
-        pulledMap.get(mapKey).vistaRecv += rawVistaRecv;
-        if (rawPoLine) pulledMap.get(mapKey).poLines.add(rawPoLine);
+        const item = pulledMap.get(mapKey);
+        item.ordered += rawOrdered;
+        item.vistaRecv += rawVistaRecv;
+        if (rawPoLine) item.poLines.add(rawPoLine);
+        if (rawDesc) {
+          item.descCounts[rawDesc] = (item.descCounts[rawDesc] || 0) + 1;
+        }
       } else {
         pulledMap.set(mapKey, { 
           desc: rawDesc, bom: rawBom, 
           ordered: rawOrdered, vistaRecv: rawVistaRecv, 
-          poLines: new Set(rawPoLine ? [rawPoLine] : []) 
+          poLines: new Set(rawPoLine ? [rawPoLine] : []),
+          descCounts: rawDesc ? { [rawDesc]: 1 } : {}
         });
       }
     }
@@ -269,6 +274,18 @@ function searchAndPullFromVista() {
 
   const pulledItems = [];
   for (const [, item] of pulledMap) {
+    if (item.descCounts) {
+      let bestDesc = item.desc;
+      let maxCount = 0;
+      for (const d in item.descCounts) {
+        if (item.descCounts[d] > maxCount) {
+          maxCount = item.descCounts[d];
+          bestDesc = d;
+        }
+      }
+      item.desc = bestDesc;
+    }
+
     if (item.bom.includes("PIPE")) {
       item.ordered = convertMmToFt(item.ordered);
       item.vistaRecv = convertMmToFt(item.vistaRecv);
