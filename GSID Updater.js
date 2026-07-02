@@ -32,12 +32,12 @@ function updateGSIDDatabase() {
     const clientMan     = data[i][4] ? data[i][4].toString().trim() : "";
     const clientAuto    = data[i][5] ? data[i][5].toString().trim() : "";
     if (!jobNum) {
-      newData.push(new Array(36).fill("")); // INCREASED TO 36
+      newData.push(new Array(39).fill(""));
       continue;
     }
 
     let mmtValid = "❌", qcprValid = "❌";
-    // ADDED: vistaQtyOrderedValid
+    let mmtMatDataValid = "❌", mmtTotalReqValid = "❌", mmtQtyKittedValid = "❌";
     let vistaBomValid = "❌", vistaDescValid = "❌", vistaBomIdValid = "❌", vistaQtyOrderedValid = "❌", vistaQtyRecvValid = "❌", vistaQtyDueValid = "❌", vistaPoValid = "❌", vistaPoLineValid = "❌";
     let itemFabValid = "❌", fabItemNoValid = "❌", fabQtyValid = "❌", fabCombMatValid = "❌", fabBomIdValid = "❌", fabKittedValid = "❌", fabDrawingValid = "❌";
     let itemAssmValid = "❌", assmKittedValid = "❌", assmDrawingValid = "❌";
@@ -106,6 +106,23 @@ function updateGSIDDatabase() {
             }
           } else {
             itemFabValid = "⚠️";
+          }
+        }
+
+        // MASTER MATERIAL DATA CHECK
+        const matDataSheet = mmtSS.getSheetByName("Master Material Data");
+        if (matDataSheet) {
+          mmtMatDataValid = "✅";
+          const mRow = matDataSheet.getLastRow(), mCol = matDataSheet.getLastColumn();
+          if (mRow > 0 && mCol > 0) {
+            const mTopRows = matDataSheet.getRange(1, 1, Math.min(20, mRow), mCol).getValues();
+            mmtTotalReqValid  = findHeaderCoord(mTopRows, ["TOTALREQUIREDONALLDRAWINGS", "TOTALREQUIRED", "TOTALREQ"]);
+            mmtQtyKittedValid = findHeaderCoord(mTopRows, ["KITTEDISSUEDQTY", "KITTEDISSUED", "KITTEDQTY", "QTYKITTED"]);
+            if ([mmtTotalReqValid, mmtQtyKittedValid].includes("❌")) {
+              mmtMatDataValid = "⚠️";
+            }
+          } else {
+            mmtMatDataValid = "⚠️";
           }
         }
 
@@ -178,7 +195,7 @@ function updateGSIDDatabase() {
     newData.push([
       mmtId, qcprId, existingInvId, clientMan, clientAuto,
       mmtValid, qcprValid,
-      // ADDED vistaQtyOrderedValid in the correct array position
+      mmtMatDataValid, mmtTotalReqValid, mmtQtyKittedValid,
       vistaBomValid, vistaDescValid, vistaBomIdValid, vistaQtyOrderedValid, vistaQtyRecvValid, vistaQtyDueValid, vistaPoValid, vistaPoLineValid,
       itemFabValid, fabItemNoValid, fabQtyValid, fabCombMatValid, fabBomIdValid, fabKittedValid, fabDrawingValid,
       itemAssmValid, assmKittedValid, assmDrawingValid, assmQtyValid, assmCombMatValid, assmBomIdValid,
@@ -186,8 +203,7 @@ function updateGSIDDatabase() {
     ]);
   }
 
-  // UPDATED RANGE WIDTH TO 36
-  gsidSheet.getRange(2, 2, newData.length, 36).setValues(newData);
+  gsidSheet.getRange(2, 2, newData.length, 39).setValues(newData);
 }
 
 // Programmatically verifies and constructs a daily nightly background trigger for the GSID database

@@ -123,55 +123,48 @@ function loadPivotData() {
 
 
   const mmtData = mmtSheet.getDataRange().getValues();
-  let headerRowIdx = -1, cMmtBom = -1, cMmtReq = -1, cMmtRecv = -1, cMmtDesc = -1;
+  let headerRowIdx = -1, cMmtBom = -1, cMmtReq = -1, cMmtRecv = -1, cMmtDesc = -1, cMmtKitted = -1;
 
-
-
+  // Use GSID coordinates for Total Req and QTY Kitted when available; fall back to header scan
+  if (coords.mmtTotalReq)  cMmtReq    = coords.mmtTotalReq.colIdx;
+  if (coords.mmtQtyKitted) cMmtKitted = coords.mmtQtyKitted.colIdx;
 
   for (let i = 0; i < Math.min(20, mmtData.length); i++) {
     const tempHeaders = sanitizeHeaders(mmtData[i]);
     const bomIdx = tempHeaders.indexOf("BOM ID");
-    const reqIdx = findCol(tempHeaders, ["Total Required on all Drawings", "Total Required"]);
-    const recvIdx = findCol(tempHeaders, ["Vista Received QTY", "Vista Received"]);
-    const descIdx = findCol(tempHeaders, ["Description", "Item Description", "Material Description"]);
-
-
-
-
-    if (bomIdx > -1 && reqIdx > -1) {
-      headerRowIdx = i; cMmtBom = bomIdx; cMmtReq = reqIdx; cMmtRecv = recvIdx; cMmtDesc = descIdx;
+    if (bomIdx > -1) {
+      headerRowIdx = i;
+      cMmtBom  = bomIdx;
+      cMmtRecv = findCol(tempHeaders, ["Vista Received QTY", "Vista Received"]);
+      cMmtDesc = findCol(tempHeaders, ["Description", "Item Description", "Material Description"]);
+      if (cMmtReq    === -1) cMmtReq    = findCol(tempHeaders, ["Total Required on all Drawings", "Total Required"]);
+      if (cMmtKitted === -1) cMmtKitted = findCol(tempHeaders, ["Kitted & Issued QTY", "Kitted Issued", "Kitted"]);
       break;
     }
   }
 
-
-
-
   if (headerRowIdx === -1) {
-    showAlert("Error: Could not find 'BOM ID' and 'Total Required' in the top 20 rows of the MMT.");
+    showAlert("Error: Could not find 'BOM ID' in the top 20 rows of the MMT Master Material Data.");
     return;
   }
 
-
-
-
   const mmtInfo = {};
- 
+
   for (let i = headerRowIdx + 1; i < mmtData.length; i++) {
-    const bomId = String(mmtData[i][cMmtBom]).trim().toUpperCase();
-    const reqQty = parseFloat(mmtData[i][cMmtReq]) || 0;
-    const recvQty = cMmtRecv > -1 ? (parseFloat(mmtData[i][cMmtRecv]) || 0) : 0;
-    const mmtDesc = cMmtDesc > -1 ? String(mmtData[i][cMmtDesc]).trim() : "";
-   
+    const bomId     = String(mmtData[i][cMmtBom]).trim().toUpperCase();
+    const reqQty    = cMmtReq    > -1 ? (parseFloat(mmtData[i][cMmtReq])    || 0) : 0;
+    const recvQty   = cMmtRecv   > -1 ? (parseFloat(mmtData[i][cMmtRecv])   || 0) : 0;
+    const kittedQty = cMmtKitted > -1 ? (parseFloat(mmtData[i][cMmtKitted]) || 0) : 0;
+    const mmtDesc   = cMmtDesc   > -1 ? String(mmtData[i][cMmtDesc]).trim() : "";
+
     if (bomId) {
       if (!mmtInfo[bomId]) {
-        mmtInfo[bomId] = { req: reqQty, recv: recvQty, pos: {}, desc: mmtDesc };
+        mmtInfo[bomId] = { req: reqQty, recv: recvQty, mmtKitted: kittedQty, pos: {}, desc: mmtDesc };
       } else {
-        mmtInfo[bomId].req = Math.max(mmtInfo[bomId].req, reqQty);
-        mmtInfo[bomId].recv = Math.max(mmtInfo[bomId].recv, recvQty);
-        if (mmtDesc && !mmtInfo[bomId].desc) {
-          mmtInfo[bomId].desc = mmtDesc;
-        }
+        mmtInfo[bomId].req       = Math.max(mmtInfo[bomId].req,       reqQty);
+        mmtInfo[bomId].recv      = Math.max(mmtInfo[bomId].recv,      recvQty);
+        mmtInfo[bomId].mmtKitted = Math.max(mmtInfo[bomId].mmtKitted, kittedQty);
+        if (mmtDesc && !mmtInfo[bomId].desc) mmtInfo[bomId].desc = mmtDesc;
       }
     }
   }
@@ -391,8 +384,9 @@ function loadPivotData() {
   const bomAggMap = {};
   for (const [, item] of inventoryMap) {
     if (!item.bom) continue;
-    if (!bomAggMap[item.bom]) bomAggMap[item.bom] = { netQty: 0, poDetails: {} };
-    bomAggMap[item.bom].netQty += item.netQty;
+    if (!bomAggMap[item.bom]) bomAggMap[item.bom] = { netQty: 0, kittedQty: 0, poDetails: {} };
+    bomAggMap[item.bom].netQty    += item.netQty;
+    bomAggMap[item.bom].kittedQty += item.kittedQty;
     for (const po in item.poDetails) {
       if (!bomAggMap[item.bom].poDetails[po]) bomAggMap[item.bom].poDetails[po] = { qty: 0, pls: new Set() };
       bomAggMap[item.bom].poDetails[po].qty += item.poDetails[po].qty;
@@ -403,13 +397,15 @@ function loadPivotData() {
   const outputArray = [];
 
   for (const [, item] of inventoryMap) {
-    const mInfo = mmtInfo[item.bom] || { req: 0, recv: 0, pos: {}, desc: "" };
+    const mInfo = mmtInfo[item.bom] || { req: 0, recv: 0, mmtKitted: 0, pos: {}, desc: "" };
 
     const bomAgg = item.bom && bomAggMap[item.bom] ? bomAggMap[item.bom] : null;
-    let shopQty = bomAgg ? bomAgg.netQty : item.netQty;
+    let shopQty       = bomAgg ? bomAgg.netQty    : item.netQty;
+    let shopKittedQty = bomAgg ? bomAgg.kittedQty : item.kittedQty;
     const shopPoDetails = bomAgg ? bomAgg.poDetails : item.poDetails;
-    let mmtRecv = mInfo.recv;
-    let mmtReq  = mInfo.req;
+    let mmtRecv      = mInfo.recv;
+    let mmtReq       = mInfo.req;
+    let mmtKittedQty = mInfo.mmtKitted || 0;
 
     // Prefer the yard description; only use MMT desc when it normalizes identically (better formatting, not a different item)
     let displayDesc = item.desc;
@@ -438,20 +434,19 @@ function loadPivotData() {
     const isPipe = item.bom ? item.bom.includes("PIPE") : false;
    
     if (isPipe) {
-      mmtRecv = convertMmToFt(mmtRecv);
-      mmtReq = convertMmToFt(mmtReq);
-     
+      mmtRecv      = convertMmToFt(mmtRecv);
+      mmtReq       = convertMmToFt(mmtReq);
+      mmtKittedQty = convertMmToFt(mmtKittedQty);
+
       // 10% PIPE TOLERANCE LOGIC (TOTALS)
       if (isWithinPipeTolerance(shopQty, mmtRecv)) {
         shopQty = mmtRecv;
       }
     }
 
-
-
-
     const deltaShopMmt = shopQty - mmtRecv;
     const deltaMmtReq  = mmtRecv - mmtReq;
+    const deltaKit     = shopKittedQty - mmtKittedQty;
    
     const fmt = (num) => isPipe ? num.toFixed(2) : Math.round(num).toString();
     const fmtDelta = (num) => (num > 0 ? "+" : "") + fmt(num);
@@ -530,8 +525,9 @@ function loadPivotData() {
     // If there is a drafting conflict, prepend a warning icon to the displayed description
     const finalDisplayDesc = isDraftingConflict ? "⚠️ " + displayDesc : displayDesc;
 
+    const shopKittedStr  = shopKittedQty > 0  ? fmt(shopKittedQty)  : "";
+    const mmtKittedStr   = mmtKittedQty  > 0  ? fmt(mmtKittedQty)   : "";
     const quarantinedStr = item.quarantinedQty > 0 ? fmt(item.quarantinedQty) : "";
-    const kittedStr      = item.kittedQty > 0      ? fmt(item.kittedQty)      : "";
 
     // Always push to array (Filter is handled via row hiding!)
     outputArray.push([
@@ -549,9 +545,11 @@ function loadPivotData() {
       fmt(mmtReq),                 // 11
       fmtDelta(deltaMmtReq),       // 12
       poCol.join("\n") || "",      // 13
-      quarantinedStr,              // 14
-      kittedStr,                   // 15
-      noteCol.join("\n\n")         // 16 (notes only — not written to sheet)
+      shopKittedStr,               // 14
+      mmtKittedStr,                // 15
+      fmtDelta(deltaKit),          // 16
+      quarantinedStr,              // 17
+      noteCol.join("\n\n")         // 18 (notes only — not written to sheet)
     ]);
   }
 
@@ -575,9 +573,9 @@ function loadPivotData() {
  
   for (let i = 0; i < outputArray.length; i++) {
     const row = outputArray[i];
-    finalValues.push(row.slice(0, 16));
-    const noteRow = new Array(16).fill("");
-    noteRow[13] = row[16] || "";
+    finalValues.push(row.slice(0, 18));
+    const noteRow = new Array(18).fill("");
+    noteRow[13] = row[18] || "";
     finalNotes.push(noteRow);
   }
 
@@ -587,8 +585,8 @@ function loadPivotData() {
   // 4. PRINT TO PIVOT TOOL UI
   const OUTPUT_START_ROW = 6;
   const DATA_START_ROW = OUTPUT_START_ROW + 1;
-  const NUM_COLS = 16;
-  const CLEAR_COLS = 17;
+  const NUM_COLS = 18;
+  const CLEAR_COLS = 19;
 
   // Header row (OUTPUT_START_ROW) already exists statically in the sheet — only clear data rows below it
   const maxRows = pivotSheet.getMaxRows();
@@ -663,8 +661,13 @@ function loadPivotData() {
         const dMmtReq  = parseFloat(rowsToWrite[i][12]);
         bgColors[i][10] = Math.abs(dShopMmt) > 0.05 ? "#FFF2CC" : "#d9ead3";
         bgColors[i][12] = dMmtReq < -0.05 ? "#f4cccc" : "#d9ead3";
-        if (rowsToWrite[i][14]) bgColors[i][14] = "#FFD966"; // amber: quarantined items present
-        if (rowsToWrite[i][15]) bgColors[i][15] = "#c9daf8"; // blue: kitted items present
+        if (rowsToWrite[i][14]) bgColors[i][14] = "#c9daf8"; // blue: shop qty kitted
+        // col 15 (MMT Qty Kit) — no background, informational
+        if (rowsToWrite[i][14] || rowsToWrite[i][15]) {
+          const dKit = parseFloat(rowsToWrite[i][16]);
+          bgColors[i][16] = Math.abs(dKit) > 0.05 ? "#FFF2CC" : "#d9ead3"; // delta kit
+        }
+        if (rowsToWrite[i][17]) bgColors[i][17] = "#FFD966"; // amber: quarantined
       }
     }
 
