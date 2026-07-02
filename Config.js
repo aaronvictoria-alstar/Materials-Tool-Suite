@@ -253,6 +253,31 @@ function getUnifiedItemKey(bomId, description) {
 }
 
 // ==========================================
+// CATEGORY OVERRIDE LOADER
+// ==========================================
+// Lazy-loads the "Category Overrides" tab into memory once per script execution.
+// All getCategoryLogic calls within the same execution reuse this cached map.
+let _categoryOverrides = null;
+
+function _loadCategoryOverrides() {
+  if (_categoryOverrides !== null) return _categoryOverrides;
+  _categoryOverrides = new Map();
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Category Overrides");
+    if (sheet && sheet.getLastRow() >= 2) {
+      const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+      for (const row of data) {
+        const key = row[0] ? row[0].toString().trim() : "";
+        const cat = row[3] ? row[3].toString().trim() : "";
+        const sub = row[4] ? row[4].toString().trim() : "";
+        if (key && cat) _categoryOverrides.set(key, { category: cat, subcat: sub });
+      }
+    }
+  } catch(e) {}
+  return _categoryOverrides;
+}
+
+// ==========================================
 // INTELLIGENT CATEGORY LOGIC
 // ==========================================
 // Massively expanded categorization engine. Parses raw material descriptions and BOM IDs to intelligently assign master categories, subcategories, and pipe sizes.
@@ -268,8 +293,13 @@ function getCategoryLogic(bomId, description) {
   const sizeMatch = dUpper.match(/(?:^|[^0-9])(\d+(?:\.\d+)?)(?:\s+\d+\/\d+)?\s*(?:\"|IN|INCH)/);
   const size = sizeMatch ? parseFloat(sizeMatch[1]) : 0;
 
-
-
+  // Check override table — BOM ID is primary key; normalized description is fallback
+  const _ov = _loadCategoryOverrides();
+  const _ovKey = bUpper || ("NOBOM_" + normalizeDescription(description).replace(/[^A-Z0-9]/g, "_"));
+  if (_ov.has(_ovKey)) {
+    const match = _ov.get(_ovKey);
+    return { category: match.category, subcat: match.subcat || "Misc", size };
+  }
 
   let tag = "";
   const tagMatch = dUpper.match(/(?:TAG|CIRCUIT ID)[\s#:]+([A-Z0-9\-]+)/);

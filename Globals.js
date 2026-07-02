@@ -8,11 +8,13 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('🛠️ Admin Tools')
     .addItem('Update GSID Database', 'updateGSIDDatabase')
+    .addItem('Update Category Logic', 'updateCategoryOverrides')
     .addItem('Bidirectional Heal (MMT ⇆ KT History)', 'showHealModal')
     .addToUi();
 
-  // Programmatically guarantee the nightly background trigger is active
+  // Programmatically guarantee the nightly background triggers are active
   try { ensureDailyGSIDTrigger(); } catch (e) {}
+  try { ensureDailyCategoryTrigger(); } catch (e) {}
 }
 
 // ==========================================
