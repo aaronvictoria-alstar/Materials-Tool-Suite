@@ -345,7 +345,7 @@ function searchAndPullFromVista() {
         const hLoc  = hLocCol  > -1 ? row[hLocCol].toString().trim()  : "";
         const hQty  = hQtyCol  > -1 ? parseFloat(row[hQtyCol]) || 0 : 0; 
 
-        const hMapKey = getUnifiedItemKey(hBom, hDesc);
+        const hMapKey = hBom || ("NOBOM_" + normalizeDescription(hDesc).replace(/[^A-Z0-9]/g, "_"));
 
         if (!historyMap[hMapKey]) historyMap[hMapKey] = { heats: new Set(), locs: new Set(), localRecvThisPo: 0 };
         if (isMatchPO) {
@@ -365,7 +365,7 @@ function searchAndPullFromVista() {
   const pushArr = { poLine: [], desc: [], bom: [], qty: [], qtyNotes: [], heat1: [], heat2: [], loc: [], updateLoc: [], notes: [], bgColors: [], sysStatus: [] };
   
   for (const item of pulledItems) {
-    const searchMapKey = getUnifiedItemKey(item.bom, item.desc);
+    const searchMapKey = item.bom || ("NOBOM_" + normalizeDescription(item.desc).replace(/[^A-Z0-9]/g, "_"));
     const hist = historyMap[searchMapKey];
     const localRecvThisPo = hist ? hist.localRecvThisPo : 0;
     

@@ -1,67 +1,6 @@
 // GLOBALS V1.02
 
 // ==========================================
-// MASTER ON EDIT TRIGGER (ROUTES RT & PT)
-// ==========================================
-// Acts as a traffic controller. Listens to UI clicks and safely routes checkbox toggles to the correct visibility filter or sorter based on the active sheet.
-function onEdit(e) {
-  if (!e || !e.range) return;
-  const sheet = e.source.getActiveSheet();
-  const sheetName = sheet.getName();
-  const editedRange = e.range;
-
-  // ----------------------------------------
-  // ROUTE 1: PIVOT TOOL (WMS DASHBOARD)
-  // ----------------------------------------
-  if (sheetName === "Pivot Tool") {
-    let checkboxRange;
-    try { checkboxRange = sheet.getRange("PT_input_balanced"); } catch(err) {}
-
-    if (checkboxRange && editedRange.getRow() === checkboxRange.getRow() && editedRange.getColumn() === checkboxRange.getColumn()) {
-      const isShowBalanced = (String(e.value).toUpperCase() === "TRUE");
-      applyBalancedFilter(sheet, isShowBalanced);
-    }
-    return; // Exit after handling PT
-  }
-
-  // ----------------------------------------
-  // ROUTE 2: RECEIVING TOOL (RT)
-  // ----------------------------------------
-  if (sheetName === RT_SHEET_NAME) {
-    let pipeInputRange, completeInputRange, sortInputRange;
-    try { pipeInputRange     = sheet.getRange("RT_input_pipe"); } catch (err) {}
-    try { completeInputRange = sheet.getRange("RT_input_complete"); } catch (err) {}
-    try { sortInputRange     = sheet.getRange("RT_input_orderBy"); } catch (err) {} 
-
-    const isPipeToggle = pipeInputRange &&
-      editedRange.getRow()    === pipeInputRange.getRow() &&
-      editedRange.getColumn() === pipeInputRange.getColumn();
-    const isCompleteToggle = completeInputRange &&
-      editedRange.getRow()    === completeInputRange.getRow() &&
-      editedRange.getColumn() === completeInputRange.getColumn();
-    const isSortToggle = sortInputRange &&
-      editedRange.getRow()    === sortInputRange.getRow() &&
-      editedRange.getColumn() === sortInputRange.getColumn();
-    if (isPipeToggle || isCompleteToggle || isSortToggle) {
-      const lock = LockService.getScriptLock();
-      try {
-        if (!lock.tryLock(3000)) return;
-        if (isPipeToggle || isCompleteToggle) {
-          applyMasterFilters(sheet);
-        } else if (isSortToggle) {
-          fastSortRtTable(sheet);    
-          applyMasterFilters(sheet);
-        }
-        
-      } finally {
-        lock.releaseLock();
-      }
-    }
-    return;
-  }
-}
-
-// ==========================================
 // GLOBAL HELPER: QCPR STATS FETCHER
 // ==========================================
 // Connects to the QCPR file to aggregate total inches, priority distributions, and main NPS sizes for Kitting Batches.
@@ -267,7 +206,7 @@ function renderBatchedTableRollup(ktSheet, batchIdStr, jobNum, rawItemsArray) {
     }
   } catch (e) {}
 
-  const { totalInches, priorityCounts, sizeCounts } = fetchQcprStats(jobNum, unpostedDrawings);
+  const { totalInches, priorityCounts, sizeCounts } = fetchQcprStats(jobNum, globalDrawings);
   let finalPri = "";
   const uniquePris = Object.keys(priorityCounts);
 

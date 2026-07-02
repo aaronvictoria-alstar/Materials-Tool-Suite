@@ -149,6 +149,7 @@ function loadPivotData() {
   }
 
   const mmtInfo = {};
+  const noBomMmtRows = [];
 
   for (let i = headerRowIdx + 1; i < mmtData.length; i++) {
     const bomId     = String(mmtData[i][cMmtBom]).trim().toUpperCase();
@@ -159,12 +160,34 @@ function loadPivotData() {
 
     if (bomId) {
       if (!mmtInfo[bomId]) {
-        mmtInfo[bomId] = { req: reqQty, recv: recvQty, mmtKitted: kittedQty, pos: {}, desc: mmtDesc };
+        mmtInfo[bomId] = { req: reqQty, recv: recvQty, mmtKitted: kittedQty, pos: {}, desc: mmtDesc,
+                           seenDescs: new Set(mmtDesc ? [mmtDesc] : []), hasDuplicate: false };
       } else {
-        mmtInfo[bomId].req       = Math.max(mmtInfo[bomId].req,       reqQty);
-        mmtInfo[bomId].recv      = Math.max(mmtInfo[bomId].recv,      recvQty);
-        mmtInfo[bomId].mmtKitted = Math.max(mmtInfo[bomId].mmtKitted, kittedQty);
-        if (mmtDesc && !mmtInfo[bomId].desc) mmtInfo[bomId].desc = mmtDesc;
+        // Flag exact BOM+desc duplicates; sum quantities regardless (covers split drawing rows)
+        if (mmtDesc && mmtInfo[bomId].seenDescs.has(mmtDesc)) mmtInfo[bomId].hasDuplicate = true;
+        mmtInfo[bomId].req       += reqQty;
+        mmtInfo[bomId].recv      += recvQty;
+        mmtInfo[bomId].mmtKitted += kittedQty;
+        if (mmtDesc) {
+          mmtInfo[bomId].seenDescs.add(mmtDesc);
+          if (!mmtInfo[bomId].desc) mmtInfo[bomId].desc = mmtDesc;
+        }
+      }
+    } else if (reqQty || recvQty || kittedQty || mmtDesc) {
+      noBomMmtRows.push({ reqQty, recvQty, kittedQty, mmtDesc });
+    }
+  }
+
+  // Merge no-BOM MMT rows into matching BOM entries by normalized description
+  for (const nob of noBomMmtRows) {
+    if (!nob.mmtDesc) continue;
+    const normNob = normalizeDescription(nob.mmtDesc);
+    for (const bid in mmtInfo) {
+      if (normNob && normalizeDescription(mmtInfo[bid].desc) === normNob) {
+        mmtInfo[bid].req       += nob.reqQty;
+        mmtInfo[bid].recv      += nob.recvQty;
+        mmtInfo[bid].mmtKitted += nob.kittedQty;
+        break;
       }
     }
   }
@@ -305,7 +328,7 @@ function loadPivotData() {
         kittedQty: 0,
         quarantinedQty: 0,
         loggedDescriptions: new Set([desc]), // Keep track of logged descriptions to detect drafting mismatches
-        descCounts: desc ? { [desc]: 1 } : {}
+        descCounts: {}
       });
     }
 
@@ -400,8 +423,9 @@ function loadPivotData() {
     const mInfo = mmtInfo[item.bom] || { req: 0, recv: 0, mmtKitted: 0, pos: {}, desc: "" };
 
     const bomAgg = item.bom && bomAggMap[item.bom] ? bomAggMap[item.bom] : null;
-    let shopQty       = bomAgg ? bomAgg.netQty    : item.netQty;
-    let shopKittedQty = bomAgg ? bomAgg.kittedQty : item.kittedQty;
+    // Per-variant quantities for display columns; BOM aggregates for delta math
+    let shopQtyCalc    = bomAgg ? bomAgg.netQty    : item.netQty;
+    let shopKittedCalc = bomAgg ? bomAgg.kittedQty : item.kittedQty;
     const shopPoDetails = bomAgg ? bomAgg.poDetails : item.poDetails;
     let mmtRecv      = mInfo.recv;
     let mmtReq       = mInfo.req;
@@ -438,15 +462,15 @@ function loadPivotData() {
       mmtReq       = convertMmToFt(mmtReq);
       mmtKittedQty = convertMmToFt(mmtKittedQty);
 
-      // 10% PIPE TOLERANCE LOGIC (TOTALS)
-      if (isWithinPipeTolerance(shopQty, mmtRecv)) {
-        shopQty = mmtRecv;
+      // 10% PIPE TOLERANCE: snap aggregate calc to MMT; display column keeps actual yard measurement
+      if (isWithinPipeTolerance(shopQtyCalc, mmtRecv)) {
+        shopQtyCalc = mmtRecv;
       }
     }
 
-    const deltaShopMmt = shopQty - mmtRecv;
+    const deltaShopMmt = shopQtyCalc - mmtRecv;
     const deltaMmtReq  = mmtRecv - mmtReq;
-    const deltaKit     = shopKittedQty - mmtKittedQty;
+    const deltaKit     = shopKittedCalc - mmtKittedQty;
    
     const fmt = (num) => isPipe ? num.toFixed(2) : Math.round(num).toString();
     const fmtDelta = (num) => (num > 0 ? "+" : "") + fmt(num);
@@ -513,7 +537,10 @@ function loadPivotData() {
 
     poStrings.sort((a, b) => a.text.localeCompare(b.text));
     const poCol = [], noteCol = [];
-   
+
+    if (mInfo.hasDuplicate) {
+      noteCol.push("⚠️ MMT has duplicate rows for this BOM ID. Quantities have been summed — verify data in Master Material Data tab.");
+    }
     poStrings.forEach((obj) => {
       poCol.push(obj.text);
       if (obj.note) noteCol.push(obj.note);
@@ -525,7 +552,7 @@ function loadPivotData() {
     // If there is a drafting conflict, prepend a warning icon to the displayed description
     const finalDisplayDesc = isDraftingConflict ? "⚠️ " + displayDesc : displayDesc;
 
-    const shopKittedStr  = shopKittedQty > 0  ? fmt(shopKittedQty)  : "";
+    const shopKittedStr  = item.kittedQty > 0  ? fmt(item.kittedQty)  : "";
     const mmtKittedStr   = mmtKittedQty  > 0  ? fmt(mmtKittedQty)   : "";
     const quarantinedStr = item.quarantinedQty > 0 ? fmt(item.quarantinedQty) : "";
 
@@ -539,7 +566,7 @@ function loadPivotData() {
       heatCol1.join("\n") || "--", // 5
       heatCol2.join("\n") || "",   // 6
       locStr,                      // 7
-      fmt(shopQty),                // 8
+      fmt(item.netQty),            // 8 — per-variant yard quantity
       fmt(mmtRecv),                // 9
       fmtDelta(deltaShopMmt),      // 10
       fmt(mmtReq),                 // 11
