@@ -872,3 +872,222 @@ function postAllKittingBatch() {
   // Trigger the existing post logic
   postKittingBatch();
 }
+
+// ==========================================
+// KITTING BATCH ROLLUP ENGINE
+// ==========================================
+// Consolidates identical BOM IDs, calculates the most common drawing requirements, and dynamically formats the spool list for the KT UI.
+function renderBatchedTableRollup(ktSheet, batchIdStr, jobNum, rawItemsArray) {
+  const rollupMap = new Map();
+  const globalDrawings = new Set();
+  const unpostedDrawings = new Set();
+  const drawingPostedMap = new Map();
+  for (const item of rawItemsArray) {
+    const cleanDraw = item.draw ? item.draw.toString().toUpperCase().trim() : "UNKNOWN";
+    globalDrawings.add(cleanDraw);
+    const isPosted = (item.datePosted && item.datePosted.toString().trim() !== "");
+
+    if (isPosted) {
+      drawingPostedMap.set(cleanDraw, true);
+    } else {
+      unpostedDrawings.add(cleanDraw);
+      const rKey = item.desc + "|||" + item.bom;
+      if (rollupMap.has(rKey)) {
+        rollupMap.get(rKey).qty += item.qty;
+        const existing = rollupMap.get(rKey).drawings.get(cleanDraw) || 0;
+        rollupMap.get(rKey).drawings.set(cleanDraw, existing + item.qty);
+      } else {
+        rollupMap.set(rKey, {
+          desc: item.desc, bom: item.bom, qty: item.qty,
+          heat1: item.heat1, heat2: item.heat2, loc: item.loc,
+          drawings: new Map([[cleanDraw, item.qty]])
+        });
+      }
+    }
+  }
+
+  const rollupItems = [];
+  const unpostedDrawingsArray = Array.from(unpostedDrawings);
+  for (const [, v] of rollupMap) {
+    const catInfo  = getCategoryLogic(v.bom, v.desc);
+    v.cat          = catInfo.category;
+    v.subcat       = catInfo.subcat;
+    v.size         = catInfo.size;
+    v.catWeight    = CAT_SORT_ORDER[v.cat] || 99;
+
+    const qtyMap  = new Map();
+    let maxCount  = 0, modeQty = -1, tie = false;
+    for (const d of unpostedDrawingsArray) {
+      const q = v.drawings.get(d) || 0;
+      if (!qtyMap.has(q)) qtyMap.set(q, []);
+      qtyMap.get(q).push(d);
+
+      const currentCount = qtyMap.get(q).length;
+      if (currentCount > maxCount) {
+        maxCount = currentCount;
+        modeQty = q; tie = false;
+      }
+      else if (currentCount === maxCount) { tie = true; }
+    }
+
+    if (qtyMap.size === 1) {
+      v.drawingsStr = modeQty + " each";
+    } else if (tie || maxCount === 1) {
+      v.drawingsStr = Array.from(v.drawings.entries())
+        .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
+        .map(entry => `${entry[0]} (${entry[1]})`)
+        .join("\n");
+    } else {
+      const outliers = [];
+      for (const [q, arr] of qtyMap.entries()) {
+        if (q !== modeQty) arr.forEach(d => outliers.push(`${d} (${q})`));
+      }
+      v.drawingsStr = outliers.sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).join("\n");
+    }
+
+    rollupItems.push(v);
+  }
+
+  rollupItems.sort((a, b) => {
+    const locA   = a.loc ? a.loc.toString().trim() : "ZZZZ";
+    const locB   = b.loc ? b.loc.toString().trim() : "ZZZZ";
+    const locCmp = locA.localeCompare(locB, undefined, { numeric: true });
+    if (locCmp !== 0) return locCmp;
+    if (a.catWeight !== b.catWeight) return a.catWeight - b.catWeight;
+
+    if (["Pipe", "Grayloc"].includes(a.cat)) {
+      if (a.size !== b.size) return a.size - b.size;
+      return a.subcat.localeCompare(b.subcat);
+    }
+
+    else if (["Flange", "Fittings", "Valve", "Support", "Bolt-Up & Gaskets"].includes(a.cat)) {
+      const subCmp = a.subcat.localeCompare(b.subcat);
+      if (subCmp !== 0) return subCmp;
+      return a.size - b.size;
+    } else {
+      return a.subcat.localeCompare(b.subcat);
+    }
+  });
+  const batchedOutput = [];
+  for (const item of rollupItems) {
+    batchedOutput.push([item.desc, "", item.qty, item.heat1, item.heat2, item.loc, item.drawingsStr]);
+  }
+
+  try { ktSheet.getRange("KT_input_batch").setValue(batchIdStr); } catch (e) {}
+  try { ktSheet.getRange("KT_batch_job").setValue(jobNum); } catch (e) {}
+
+  try {
+    const spoolListRange  = ktSheet.getRange("KT_spool_list");
+    const sortedDrawings  = Array.from(globalDrawings).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const numSpools       = sortedDrawings.length;
+    if (numSpools < 50) {
+      const rowsToClear     = 50 - numSpools;
+      const clearDrawRange  = spoolListRange.offset(numSpools + 1, 0, rowsToClear, 1);
+      const clearCheckRange = spoolListRange.offset(numSpools + 1, 1, rowsToClear, 1);
+      const defaultFmtRange = spoolListRange.offset(numSpools + 1, 2, rowsToClear, 1);
+
+      clearDrawRange.clearContent();
+      clearCheckRange.clearContent();
+      clearCheckRange.clearDataValidations();
+
+      defaultFmtRange.copyTo(clearDrawRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+      defaultFmtRange.copyTo(clearCheckRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    }
+
+    if (numSpools > 0) {
+      const outDrawings = sortedDrawings.map(d => [d]);
+      const outChecks = sortedDrawings.map(d => [drawingPostedMap.has(d) ? true : false]);
+
+      const drawTargetRange = spoolListRange.offset(1, 0, numSpools, 1);
+      const checkTargetRange = spoolListRange.offset(1, 1, numSpools, 1);
+
+      drawTargetRange.setValues(outDrawings);
+
+      spoolListRange.offset(1, 0).copyTo(drawTargetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+      spoolListRange.offset(1, 0).copyTo(checkTargetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+
+      checkTargetRange.setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+      checkTargetRange.setValues(outChecks);
+    } else {
+      spoolListRange.offset(1, 0).clearContent();
+      spoolListRange.offset(1, 1).clearContent();
+      spoolListRange.offset(1, 1).clearDataValidations();
+
+      const singleDefault = spoolListRange.offset(1, 2);
+      singleDefault.copyTo(spoolListRange.offset(1, 0), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+      singleDefault.copyTo(spoolListRange.offset(1, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    }
+  } catch (e) {}
+
+  const { totalInches, priorityCounts, sizeCounts } = fetchQcprStats(jobNum, globalDrawings);
+  let finalPri = "";
+  const uniquePris = Object.keys(priorityCounts);
+
+  if (uniquePris.length === 1) {
+    finalPri = uniquePris[0];
+  } else if (uniquePris.length > 1) {
+    const pSet = new Set();
+    uniquePris.forEach(priStr => {
+      const match = priStr.match(/P(\d+)/i);
+      if (match) pSet.add(parseInt(match[1], 10));
+    });
+    const pArr = Array.from(pSet).sort((a, b) => a - b);
+
+    if (pArr.length === 0) {
+      finalPri = uniquePris[0];
+    } else if (pArr.length === 1) {
+      finalPri = "P" + pArr[0];
+    } else if (pArr.length === 2) {
+      finalPri = "P" + pArr[0] + " & " + pArr[1];
+    } else if (pArr.length <= 5) {
+      const last = pArr.pop();
+      finalPri = "P" + pArr.join(", ") + ", & " + last;
+    } else {
+      const firstFive = pArr.slice(0, 5);
+      finalPri = "P" + firstFive.join(", ") + ", etc.";
+    }
+  }
+
+  let finalSizeStr = "";
+  if (Object.keys(sizeCounts).length > 0) {
+    let maxCount = 0;
+    for (const s in sizeCounts) {
+      if (sizeCounts[s] > maxCount) maxCount = sizeCounts[s];
+    }
+    const majoritySizes = Object.keys(sizeCounts).filter(s => sizeCounts[s] === maxCount);
+    const parseSizeMath = (val) => {
+      let total = 0;
+      val.split(' ').forEach(p => {
+        if (p.includes('/')) {
+          const f = p.split('/');
+          total += (parseFloat(f[0]) / parseFloat(f[1])) || 0;
+        } else {
+          total += parseFloat(p) || 0;
+        }
+      });
+      return total;
+    };
+
+    majoritySizes.sort((a, b) => parseSizeMath(a) - parseSizeMath(b));
+
+    if (majoritySizes.length === 1)      finalSizeStr = majoritySizes[0] + '" Pipe';
+    else if (majoritySizes.length === 2) finalSizeStr = majoritySizes[0] + '" & ' + majoritySizes[1] + '" Pipe';
+    else                                 finalSizeStr = majoritySizes[majoritySizes.length - 1] + '" Pipe';
+  }
+
+  try { ktSheet.getRange("KT_batch_priority").setValue(finalPri); } catch (e) {}
+  try { ktSheet.getRange("KT_batch_size").setValue(finalSizeStr); } catch (e) {}
+  try { ktSheet.getRange("KT_batch_inches").setValue(totalInches > 0 ? "Total Inches - " + totalInches.toFixed(2) : ""); } catch (e) {}
+
+  const ktLastRow    = Math.max(ktSheet.getLastRow(), KT_START_ROW);
+  const rowsToClear  = Math.max(ktLastRow - KT_START_ROW + 1, 50);
+  const batchedRange = ktSheet.getRange(KT_START_ROW, 10, rowsToClear, 7);
+
+  batchedRange.clearContent();
+  batchedRange.clearDataValidations();
+  if (batchedOutput.length > 0) {
+    ktSheet.getRange(KT_START_ROW, 10, batchedOutput.length, 7).setValues(batchedOutput);
+  }
+
+  return batchedOutput.length;
+}

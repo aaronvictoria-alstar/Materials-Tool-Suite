@@ -15,7 +15,7 @@ function pushReceivingData() {
   const clientName   = getInputValue(rtSheet, "RT_input_client");
   const receiverName = getInputValue(rtSheet, "RT_input_receiver");
   const dateLogged   = getInputValue(rtSheet, "RT_input_date");
-  
+
   if (!jobSheetName || !entryType) {
     showAlert("Error: Please ensure Job Number and Entry Type are filled out.");
     return;
@@ -61,7 +61,7 @@ function pushReceivingData() {
   const iRec       = sHeaders.indexOf("Received Units");
   const iNewHeat   = sHeaders.indexOf("New Heat #");
   const iNewLoc    = sHeaders.indexOf("New Location");
-  const iNotes     = sHeaders.indexOf("Notes"); 
+  const iNotes     = sHeaders.indexOf("Notes");
   const iUpdateLoc = sHeaders.indexOf("Update Location");
 
   const tLastCol = targetSheet.getLastColumn();
@@ -80,14 +80,14 @@ function pushReceivingData() {
     tag:   findCol(tHeaders, ["Tag #"]),
     heat:  findCol(tHeaders, ["Heat #", "Heat Number"]),
     loc:   findCol(tHeaders, ["Location", "Full Location"]),
-    notes: findCol(tHeaders, ["Notes", "Note"]), 
+    notes: findCol(tHeaders, ["Notes", "Note"]),
     recv:  findCol(tHeaders, ["Receiver/Kitter", "Receiver"])
   };
-  
+
   const itemData = rtSheet.getRange(RT_START_ROW, 1, sourceLastRow - RT_HEADER_ROW, sourceLastCol).getValues();
   const rowsToPush = [];
   const locationUpdates = []; // Collects historical location overwrites
-  
+
   for (const row of itemData) {
     const recUnits = iRec > -1 ? row[iRec].toString().trim() : "";
     if (recUnits === "" || recUnits === "0") continue;
@@ -121,7 +121,7 @@ function pushReceivingData() {
     if (tCols.qty  > -1) newRow[tCols.qty]  = recUnits;
     if (tCols.heat > -1) newRow[tCols.heat] = heatNum;
     if (tCols.loc  > -1) newRow[tCols.loc]  = location;
-    if (tCols.notes > -1) newRow[tCols.notes] = noteVal; 
+    if (tCols.notes > -1) newRow[tCols.notes] = noteVal;
     if (tCols.recv > -1) newRow[tCols.recv] = receiverName;
 
     rowsToPush.push(newRow);
@@ -131,7 +131,7 @@ function pushReceivingData() {
     const checkColIdx = tCols.desc > -1 ? tCols.desc + 1 : (tCols.bom > -1 ? tCols.bom + 1 : 7);
     const nextRow = getSafeNextRow(targetSheet, checkColIdx, 2);
     const targetRange = targetSheet.getRange(nextRow, 1, rowsToPush.length, tLastCol);
-    
+
     // SURGICAL TEXT FORMATTING: Only format the specific PO column as plain text to protect the leading zeros
     if (tCols.po > -1) {
       targetSheet.getRange(nextRow, tCols.po + 1, rowsToPush.length, 1).setNumberFormat("@");
@@ -144,7 +144,7 @@ function pushReceivingData() {
       formatSource.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
       formatSource.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
     }
-    
+
     // BATCH UPDATE: Overwrite Historical Locations in Job Sheet
     if (locationUpdates.length > 0 && tCols.bom > -1 && tCols.desc > -1 && tCols.loc > -1) {
       const histLastRow = targetSheet.getLastRow();
@@ -152,11 +152,11 @@ function pushReceivingData() {
         const histData = targetSheet.getRange(1, 1, histLastRow, tLastCol).getValues();
         const locColData = targetSheet.getRange(1, tCols.loc + 1, histLastRow, 1).getValues();
         let madeHistChanges = false;
-        
+
         for (let i = 1; i < histData.length; i++) {
           const rBom  = histData[i][tCols.bom] ? histData[i][tCols.bom].toString().trim().toUpperCase() : "";
           const rDesc = histData[i][tCols.desc] ? histData[i][tCols.desc].toString().trim().toUpperCase() : "";
-          
+
           // Find if this BOM and Description combination is in our updates list
           const match = locationUpdates.find(u => u.bom.toUpperCase() === rBom && u.desc.toUpperCase() === rDesc);
           if (match) {
@@ -164,7 +164,7 @@ function pushReceivingData() {
             madeHistChanges = true;
           }
         }
-        
+
         if (madeHistChanges) {
           targetSheet.getRange(1, tCols.loc + 1, locColData.length, 1).setValues(locColData);
         }
@@ -184,7 +184,7 @@ function pushReceivingData() {
 function clearReceivingTool() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const rtSheet = ss.getSheetByName(RT_SHEET_NAME);
-  
+
   clearNamedRanges(rtSheet, ["RT_input_job", "RT_input_po", "RT_input_type", "RT_input_packing", "RT_input_receiver", "RT_input_date"]);
   // Uses the new DRY helper to safely wipe the table
   clearRtTable(rtSheet);
@@ -209,7 +209,7 @@ function searchAndPullFromVista() {
   }
 
   const cleanJob = jobNum.toString().toUpperCase().trim();
-  const cleanPo  = padPoNumber(poNum); 
+  const cleanPo  = padPoNumber(poNum);
   const searchKey = cleanJob + cleanPo;
   const trackerSS = getTrackerSpreadsheet(jobNum);
   if (!trackerSS) return;
@@ -238,14 +238,14 @@ function searchAndPullFromVista() {
   // --- 1. PULL FROM VISTA ---
   for (const row of vistaData) {
     if (row[coords.vistaPo.colIdx] && row[coords.vistaPo.colIdx].toString().trim().toUpperCase() === searchKey) {
-      
+
       const rawOrdered = coords.vistaQtyOrdered ? parseFloat(row[coords.vistaQtyOrdered.colIdx].toString().trim()) || 0 : (coords.vistaQtyDue ? parseFloat(row[coords.vistaQtyDue.colIdx].toString().trim()) || 0 : 0);
       const rawVistaRecv = coords.vistaQtyRecv ? parseFloat(row[coords.vistaQtyRecv.colIdx].toString().trim()) || 0 : 0;
-      
+
       const rawBom    = row[coords.vistaBom.colIdx].toString().trim().toUpperCase();
       const rawDesc   = row[coords.vistaDesc.colIdx].toString().trim();
       const rawPoLine = (coords.vistaPoLine && row[coords.vistaPoLine.colIdx]) ? row[coords.vistaPoLine.colIdx].toString().trim() : "";
-      
+
       const mapKey    = getUnifiedItemKey(rawBom, rawDesc);
 
       if (pulledMap.has(mapKey)) {
@@ -257,9 +257,9 @@ function searchAndPullFromVista() {
           item.descCounts[rawDesc] = (item.descCounts[rawDesc] || 0) + 1;
         }
       } else {
-        pulledMap.set(mapKey, { 
-          desc: rawDesc, bom: rawBom, 
-          ordered: rawOrdered, vistaRecv: rawVistaRecv, 
+        pulledMap.set(mapKey, {
+          desc: rawDesc, bom: rawBom,
+          ordered: rawOrdered, vistaRecv: rawVistaRecv,
           poLines: new Set(rawPoLine ? [rawPoLine] : []),
           descCounts: rawDesc ? { [rawDesc]: 1 } : {}
         });
@@ -315,7 +315,7 @@ function searchAndPullFromVista() {
       return a.subcat.localeCompare(b.subcat);
     }
   });
-  
+
   // --- 2. PULL FROM LOCAL HISTORY ---
   const historyData = updateRawDataTab(jobNum, clientName, "RT Data", true);
   const historyMap  = {};
@@ -325,7 +325,7 @@ function searchAndPullFromVista() {
     const hDescCol = findCol(hHeaders, ["Material Description", "Description", "Item Description"]);
     const hHeatCol = findCol(hHeaders, ["Heat #", "Heat Number"]);
     const hLocCol  = findCol(hHeaders, ["Location", "Full Location"]);
-    const hQtyCol  = findCol(hHeaders, ["Qty", "Quantity"]); 
+    const hQtyCol  = findCol(hHeaders, ["Qty", "Quantity"]);
     const hPoCol   = findCol(hHeaders, ["PO", "PO #", "PO Number"]);
     if (hBomCol > -1) {
       for (let i = 1; i < historyData.length; i++) {
@@ -340,10 +340,10 @@ function searchAndPullFromVista() {
         }
 
         const hBom  = row[hBomCol].toString().trim().toUpperCase();
-        const hDesc = hDescCol > -1 ? row[hDescCol].toString().trim() : ""; 
+        const hDesc = hDescCol > -1 ? row[hDescCol].toString().trim() : "";
         const hHeat = hHeatCol > -1 ? row[hHeatCol].toString().trim() : "";
         const hLoc  = hLocCol  > -1 ? row[hLocCol].toString().trim()  : "";
-        const hQty  = hQtyCol  > -1 ? parseFloat(row[hQtyCol]) || 0 : 0; 
+        const hQty  = hQtyCol  > -1 ? parseFloat(row[hQtyCol]) || 0 : 0;
 
         const hMapKey = hBom || ("NOBOM_" + normalizeDescription(hDesc).replace(/[^A-Z0-9]/g, "_"));
 
@@ -363,27 +363,27 @@ function searchAndPullFromVista() {
 
   // --- 3. RECONCILIATION MATH, COLORS, & NOTES ---
   const pushArr = { poLine: [], desc: [], bom: [], qty: [], qtyNotes: [], heat1: [], heat2: [], loc: [], updateLoc: [], notes: [], bgColors: [], sysStatus: [] };
-  
+
   for (const item of pulledItems) {
     const searchMapKey = item.bom || ("NOBOM_" + normalizeDescription(item.desc).replace(/[^A-Z0-9]/g, "_"));
     const hist = historyMap[searchMapKey];
     const localRecvThisPo = hist ? hist.localRecvThisPo : 0;
-    
+
     let trueRemaining = item.ordered - localRecvThisPo;
     if (item.bom.includes("PIPE")) trueRemaining = trueRemaining.toFixed(2);
-    else trueRemaining = Math.max(0, trueRemaining).toString(); 
+    else trueRemaining = Math.max(0, trueRemaining).toString();
 
-    pushArr.poLine.push([item.poLineStr]); 
+    pushArr.poLine.push([item.poLineStr]);
     pushArr.desc.push([item.desc]);
     pushArr.bom.push([item.bom]);
     pushArr.qty.push([trueRemaining]);
     pushArr.updateLoc.push([false]); // Ensure checkbox is populated unchecked
-    
+
     const hasMismatch = Math.abs(item.vistaRecv - localRecvThisPo) > 0.05;
-    
+
     // Calculate Shortage & Tolerance Flag
     let isShort = false;
-    let statusFlag = ""; 
+    let statusFlag = "";
     if (item.bom.includes("PIPE")) {
       const hasTolerance = isWithinPipeTolerance(localRecvThisPo, item.ordered);
       isShort = !hasTolerance && (localRecvThisPo < item.ordered);
@@ -393,12 +393,12 @@ function searchAndPullFromVista() {
     } else {
       isShort = localRecvThisPo < item.ordered;
     }
-    pushArr.sysStatus.push([statusFlag]); 
+    pushArr.sysStatus.push([statusFlag]);
 
     // UX Feature: Determine Colors and Hover Notes
     let qNoteArr = [];
-    let bgColor = null; 
-    let noteStr = ""; 
+    let bgColor = null;
+    let noteStr = "";
 
     // Step 1: Base Status (Tolerance vs Fully Received)
     if (statusFlag === "COMPLETE_TOLERANCE") {
@@ -411,7 +411,7 @@ function searchAndPullFromVista() {
     // Step 2: Mismatch Override (SCM Error Catching with VISTA Ordered included)
     if (hasMismatch) {
       bgColor = "#FFF2CC"; // Yellow OVERRIDES green/purple
-      
+
       // Cleanly format numbers for the notes based on material type
       const fOrd = item.bom.includes("PIPE") ? item.ordered.toFixed(2) : Math.round(item.ordered).toString();
       const fVis = item.bom.includes("PIPE") ? item.vistaRecv.toFixed(2) : Math.round(item.vistaRecv).toString();
@@ -427,7 +427,7 @@ function searchAndPullFromVista() {
     pushArr.qtyNotes.push([qNoteArr.join("\n\n")]);
     pushArr.notes.push([noteStr]);
     pushArr.bgColors.push([bgColor]);
-    
+
     // Format Heats and Locations
     let heatStr1 = "", heatStr2 = "", locStr = "";
     if (hist) {
@@ -448,7 +448,7 @@ function searchAndPullFromVista() {
   // --- 4. OUTPUT TO SHEET ---
   const rtHeaders = sanitizeHeaders(rtSheet.getRange(RT_HEADER_ROW, 1, 1, rtSheet.getLastColumn()).getValues()[0]);
   const colMap = {
-    poLine:    rtHeaders.indexOf("PO/PL Item #") + 1, 
+    poLine:    rtHeaders.indexOf("PO/PL Item #") + 1,
     desc:      rtHeaders.indexOf("Material Description") + 1,
     bom:       rtHeaders.indexOf("BOMID") + 1,
     rem:       rtHeaders.indexOf("Remaining Units") + 1,
@@ -456,38 +456,38 @@ function searchAndPullFromVista() {
     loc:       rtHeaders.indexOf("Current Location") + 1,
     updateLoc: rtHeaders.indexOf("Update Location") + 1,
     notes:     rtHeaders.indexOf("Notes") + 1,
-    sysStatus: rtHeaders.indexOf("System_Status") + 1 
+    sysStatus: rtHeaders.indexOf("System_Status") + 1
   };
-  
+
   clearRtTable(rtSheet);
   clearNamedRanges(rtSheet, ["RT_input_packing", "RT_input_receiver", "RT_input_date"]);
-  
+
   if (colMap.poLine > 0) rtSheet.getRange(RT_START_ROW, colMap.poLine, pushArr.poLine.length, 1).setValues(pushArr.poLine);
   if (colMap.desc > 0) rtSheet.getRange(RT_START_ROW, colMap.desc, pushArr.desc.length, 1).setValues(pushArr.desc);
   if (colMap.bom  > 0) rtSheet.getRange(RT_START_ROW, colMap.bom,  pushArr.bom.length, 1).setValues(pushArr.bom);
-  
+
   if (colMap.rem  > 0) {
     const remRange = rtSheet.getRange(RT_START_ROW, colMap.rem, pushArr.qty.length, 1);
     remRange.setValues(pushArr.qty);
     remRange.setBackgrounds(pushArr.bgColors);
     remRange.setNotes(pushArr.qtyNotes); // Pushes the hover UI tooltips
   }
-  
+
   if (colMap.heat > 0) {
     rtSheet.getRange(RT_START_ROW, colMap.heat,     pushArr.heat1.length, 1).setValues(pushArr.heat1);
     rtSheet.getRange(RT_START_ROW, colMap.heat + 1, pushArr.heat2.length, 1).setValues(pushArr.heat2);
   }
-  
+
   if (colMap.loc  > 0) rtSheet.getRange(RT_START_ROW, colMap.loc,  pushArr.loc.length, 1).setValues(pushArr.loc);
-  
+
   if (colMap.updateLoc > 0) {
     const upLocRange = rtSheet.getRange(RT_START_ROW, colMap.updateLoc, pushArr.updateLoc.length, 1);
     upLocRange.setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
     upLocRange.setValues(pushArr.updateLoc);
   }
-  
+
   if (colMap.notes > 0) rtSheet.getRange(RT_START_ROW, colMap.notes, pushArr.notes.length, 1).setValues(pushArr.notes);
-  
+
   if (colMap.sysStatus > 0) {
     rtSheet.getRange(RT_START_ROW, colMap.sysStatus, pushArr.sysStatus.length, 1).setValues(pushArr.sysStatus);
   }
@@ -501,7 +501,7 @@ function searchAndPullFromVista() {
   const endHideRow = maxRows - frameSize;
   const hideCount = endHideRow - startHideRow + 1;
   if (hideCount > 0) rtSheet.hideRows(startHideRow, hideCount);
-  
+
   applyMasterFilters(rtSheet);
 
   const orderMsg = orderByPoLine ? "(Sorted numerically by PO Line #)" : "";
@@ -509,77 +509,132 @@ function searchAndPullFromVista() {
 }
 
 // ==========================================
-// 8. MASTER ON EDIT TRIGGER (ROUTES RT & PT)
+// RT TABLE HELPERS
 // ==========================================
-// Acts as a traffic controller. Listens to UI clicks and safely routes checkbox toggles to the correct visibility filter or sorter based on the active sheet.
-function onEdit(e) {
-  if (!e || !e.range) return;
-  const sheet = e.source.getActiveSheet();
-  const sheetName = sheet.getName();
-  const editedRange = e.range;
 
-  // ----------------------------------------
-  // ROUTE 1: PIVOT TOOL (WMS DASHBOARD)
-  // ----------------------------------------
-  if (sheetName === "Pivot Tool") {
-    let checkboxRange;
-    try { checkboxRange = sheet.getRange("PT_input_balanced"); } catch(err) {}
+// Wipes the Receiving Tool data grid while safely preserving column headers, formulas, and specific cell background colors.
+function clearRtTable(rtSheet) {
+  const lastCol = rtSheet.getLastColumn();
+  const lastRow = Math.max(rtSheet.getLastRow(), RT_START_ROW);
+  const headers = sanitizeHeaders(rtSheet.getRange(RT_HEADER_ROW, 1, 1, lastCol).getValues()[0]);
+  const colsToClear = [
+    "PO/PL Item #", "Material Description", "BOMID", "Remaining Units",
+    "Received Units", "Logged Heat #", "New Heat #", "Dimensions",
+    "Current Location", "New Location", "Notes"
+  ];
+  const rangesToClear = [];
+  const rowsToClear = Math.max(lastRow - RT_START_ROW + 1, 50);
 
-    if (checkboxRange && editedRange.getRow() === checkboxRange.getRow() && editedRange.getColumn() === checkboxRange.getColumn()) {
-      const isShowBalanced = (String(e.value).toUpperCase() === "TRUE");
-      applyBalancedFilter(sheet, isShowBalanced);
-    }
-    return; // Exit after handling PT
-  }
+  let remColRange = null;
+  colsToClear.forEach(colName => {
+    const colIdx = headers.indexOf(colName);
+    if (colIdx > -1) {
+      const clearWidth = (colName === "Logged Heat #") ? 2 : 1;
+      const targetRange = rtSheet.getRange(RT_START_ROW, colIdx + 1, rowsToClear, clearWidth);
 
-  // ----------------------------------------
-  // ROUTE 2: RECEIVING TOOL (RT)
-  // ----------------------------------------
-  if (sheetName === RT_SHEET_NAME) {
-    let pipeInputRange, completeInputRange, sortInputRange;
-    try { pipeInputRange     = sheet.getRange("RT_input_pipe"); } catch (err) {}
-    try { completeInputRange = sheet.getRange("RT_input_complete"); } catch (err) {}
-    try { sortInputRange     = sheet.getRange("RT_input_orderBy"); } catch (err) {} 
+      rangesToClear.push(targetRange.getA1Notation());
 
-    const isPipeToggle = pipeInputRange &&
-      editedRange.getRow()    === pipeInputRange.getRow() &&
-      editedRange.getColumn() === pipeInputRange.getColumn();
-    const isCompleteToggle = completeInputRange &&
-      editedRange.getRow()    === completeInputRange.getRow() &&
-      editedRange.getColumn() === completeInputRange.getColumn();
-    const isSortToggle = sortInputRange &&
-      editedRange.getRow()    === sortInputRange.getRow() &&
-      editedRange.getColumn() === sortInputRange.getColumn();
-    if (isPipeToggle || isCompleteToggle || isSortToggle) {
-      const lock = LockService.getScriptLock();
-      try {
-        if (!lock.tryLock(3000)) return;
-        if (isPipeToggle || isCompleteToggle) {
-          applyMasterFilters(sheet);
-        } else if (isSortToggle) {
-          fastSortRtTable(sheet);    
-          applyMasterFilters(sheet);
-        }
-        
-      } finally {
-        lock.releaseLock();
+      if (colName === "Remaining Units") {
+        remColRange = targetRange;
       }
     }
-    return;
+  });
+
+  if (rangesToClear.length > 0) {
+    const rangeList = rtSheet.getRangeList(rangesToClear);
+    rangeList.clearContent();
+    rangeList.clearDataValidations();
   }
+
+  if (remColRange) {
+    remColRange.setBackground("#f3f3f3");
+  }
+
+  // SURGICAL CLEAR: Uncheck the "Update Location" column without destroying the UI checkboxes!
+  const upLocIdx = headers.indexOf("Update Location");
+  if (upLocIdx > -1) {
+     const upLocRange = rtSheet.getRange(RT_START_ROW, upLocIdx + 1, rowsToClear, 1);
+     upLocRange.uncheck();
+  }
+}
+
+// Sorts the RT grid locally in memory based on PO lines and category weights, then instantly pastes the sorted data back.
+function fastSortRtTable(sheet) {
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return;
+
+  const headers = sanitizeHeaders(sheet.getRange(RT_HEADER_ROW, 1, 1, lastCol).getValues()[0]);
+  const poColIdx   = headers.indexOf("PO/PL Item #") + 1;
+  const descColIdx = headers.indexOf("Material Description") + 1;
+  const bomColIdx  = headers.indexOf("BOMID") + 1;
+
+  if (poColIdx === 0 || descColIdx === 0 || bomColIdx === 0) return;
+  const maxRows = sheet.getMaxRows();
+  const rawData = sheet.getRange(RT_START_ROW, 1, maxRows - RT_START_ROW + 1, lastCol).getValues();
+  let realLastRow = RT_START_ROW - 1;
+  for (let i = 0; i < rawData.length; i++) {
+    if (rawData[i][descColIdx - 1] || rawData[i][bomColIdx - 1]) {
+      realLastRow = RT_START_ROW + i;
+    }
+  }
+
+  if (realLastRow < RT_START_ROW) return;
+
+  const numRows = realLastRow - RT_START_ROW + 1;
+  const dataToSort = sheet.getRange(RT_START_ROW, 1, numRows, lastCol).getValues();
+  const orderByPoLine = String(sheet.getRange("RT_input_orderBy").getValue()).toUpperCase().trim() === "TRUE";
+  const mapped = dataToSort.map(row => {
+    const rawPo = row[poColIdx - 1] ? row[poColIdx - 1].toString() : "";
+    const desc  = row[descColIdx - 1] ? row[descColIdx - 1].toString() : "";
+    const bom   = row[bomColIdx - 1] ? row[bomColIdx - 1].toString() : "";
+
+    const poLines = rawPo.split(/[\n,;]+/).map(l => parseFloat(l.trim())).filter(n => !isNaN(n));
+    const primaryPoLine = poLines.length > 0 ? Math.min(...poLines) : 999999;
+
+    const catInfo = getCategoryLogic(bom, desc);
+    const catWeight = CAT_SORT_ORDER[catInfo.category] || 99;
+
+    return { row, primaryPoLine, catWeight, cat: catInfo.category, subcat: catInfo.subcat, size: catInfo.size };
+  });
+  mapped.sort((a, b) => {
+    if (orderByPoLine) {
+      if (a.primaryPoLine !== b.primaryPoLine) return a.primaryPoLine - b.primaryPoLine;
+    }
+    if (a.catWeight !== b.catWeight) return a.catWeight - b.catWeight;
+    if (["Pipe", "Grayloc"].includes(a.cat)) {
+      if (a.size !== b.size) return a.size - b.size;
+      return a.subcat.localeCompare(b.subcat);
+    } else if (["Flange", "Fittings", "Valve", "Support", "Bolt-Up & Gaskets"].includes(a.cat)) {
+      const subCmp = a.subcat.localeCompare(b.subcat);
+      if (subCmp !== 0) return subCmp;
+
+      return a.size - b.size;
+    } else {
+      return a.subcat.localeCompare(b.subcat);
+    }
+  });
+  const sortedData = mapped.map(obj => obj.row);
+  sheet.getRange(RT_START_ROW, 1, numRows, lastCol).setValues(sortedData);
+}
+
+// Ensures purchase order strings are stripped of accidental leading zeros and cleanly padded to exactly 4 digits.
+function padPoNumber(poNum) {
+  if (!poNum && poNum !== 0) return "";
+  const strippedPo = poNum.toString().trim().replace(/^0+/, '');
+  return strippedPo.padStart(4, '0').toUpperCase();
 }
 
 function applyMasterFilters(sheet) {
   const maxRows = sheet.getMaxRows();
   const lastCol = sheet.getLastColumn();
   if (lastCol < 1) return;
-  
+
   const headers = sanitizeHeaders(sheet.getRange(RT_HEADER_ROW, 1, 1, lastCol).getValues()[0]);
   const iDesc   = headers.indexOf("Material Description") + 1;
   const iBom    = headers.indexOf("BOMID") + 1;
   const remColIdx = findCol(headers, ["Remaining Units", "Remaining", "Rem Qty", "Remaining Quantity", "Qty To Receive", "Balance"]) + 1;
   const statusColIdx = findCol(headers, ["System_Status"]) + 1; // NEW: Find the hidden status column
-  
+
   if (iDesc === 0 || iBom === 0) return;
   // Grab all data including the hidden column
   const data = sheet.getRange(RT_START_ROW, 1, maxRows - RT_START_ROW + 1, lastCol).getValues();
@@ -614,7 +669,7 @@ function applyMasterFilters(sheet) {
           const remVal = parseFloat(data[i][remColIdx - 1]);
           if (!isNaN(remVal) && remVal <= 0) isComplete = true;
         }
-        
+
         // Check 2 (NEW): Did the backend flag it as complete via tolerance?
         if (statusColIdx > 0) {
           const sysStatus = data[i][statusColIdx - 1] ? data[i][statusColIdx - 1].toString() : "";
@@ -622,7 +677,7 @@ function applyMasterFilters(sheet) {
             isComplete = true;
           }
         }
-        
+
         if (isComplete) shouldHide = true;
       }
     }
@@ -641,7 +696,7 @@ function applyMasterFilters(sheet) {
       } else {
         if (currentMode) sheet.hideRows(startRow, count);
         else sheet.showRows(startRow, count);
-        
+
         currentMode = visibilityMap[i].hide;
         startRow = visibilityMap[i].row;
         count = 1;
@@ -680,7 +735,7 @@ function handleMasterLogPush(job, po, packingList, receiver, pushCount, targetSS
     subMat:    findCol(headers, ["Submitted by Materials"]),
     freeIssue: findCol(headers, ["Free Issue"]),
     mrr:       findCol(headers, ["MRR Completed"]),
-  
+
     load:      findCol(headers, ["Load Type"]),
     arrival:   findCol(headers, ["Actual Arrival"]),
     recId:     findCol(headers, ["Rec ID"])
@@ -700,12 +755,12 @@ function handleMasterLogPush(job, po, packingList, receiver, pushCount, targetSS
     const endRecVal = data[i][cols.endRec] ? data[i][cols.endRec].toString().trim() : "";
     // Target: Exact Match AND End Receiving is Blank
     if (rowJob === job.toUpperCase() && rowPo === po && rowPl === packingList.toUpperCase() && endRecVal === "") {
-      
+
       let arrVal = data[i][cols.arrival];
       if (arrVal instanceof Date) {
         arrVal = Utilities.formatDate(arrVal, Session.getScriptTimeZone(), "MMM/dd/yyyy HH:mm");
       }
-      
+
       matches.push({
         rowIndex: i + 1, // Absolutely maps to the correct Google Sheet row
         row: data[i],
@@ -737,19 +792,19 @@ function handleMasterLogPush(job, po, packingList, receiver, pushCount, targetSS
 function updateMasterLogRow(sheet, rowIndex, cols, rowData, receiver) {
   const now = new Date();
   const format = "mmm/dd/yyyy hh:mm"; // Yields: May/22/2026 15:43
-  
+
   if (cols.receiver > -1) {
     sheet.getRange(rowIndex, cols.receiver + 1).setValue(receiver);
   }
-  
+
   if (cols.endRec > -1) {
     sheet.getRange(rowIndex, cols.endRec + 1).setValue(now).setNumberFormat(format);
   }
-  
+
   if (cols.subMat > -1) {
     sheet.getRange(rowIndex, cols.subMat + 1).setValue(now).setNumberFormat(format);
   }
-  
+
   if (cols.freeIssue > -1 && cols.mrr > -1) {
     const freeIssueVal = rowData[cols.freeIssue] ? rowData[cols.freeIssue].toString().trim().toUpperCase() : "";
     if (freeIssueVal === "Y" || freeIssueVal === "YES") {
@@ -763,7 +818,7 @@ function processMasterLogModal(rowIndex, receiver) {
   const logSS = SpreadsheetApp.openById(MASTER_LOG_ID);
   const rl2 = logSS.getSheetByName("RecLog2");
   const lastCol = rl2.getLastColumn();
-  
+
   // Re-verify columns locally to prevent JSON data dropping
   const headers = sanitizeHeaders(rl2.getRange(1, 1, 1, lastCol).getValues()[0]);
   const cols = {

@@ -1,6 +1,22 @@
 // WMS DASHBOARD V1.02
 
 // ==========================================
+// WEB APP GATEWAY
+// ==========================================
+// Serves the front-end WMS_Dashboard HTML and allows server-side file includes.
+function doGet(e) {
+  const template = HtmlService.createTemplateFromFile('WMS_Dashboard');
+  return template.evaluate()
+      .setTitle('Materials Tool Suite - WMS')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+// ==========================================
 // 1. NEW DELIVERY PROCESSOR (Forms & Drive)
 // ==========================================
 // Intercepts form data and base64 image payloads from the web app, saves the file to Drive, and appends the metadata to RecLog2.
