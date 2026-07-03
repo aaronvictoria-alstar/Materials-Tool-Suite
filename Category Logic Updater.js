@@ -236,10 +236,11 @@ function updateCategoryOverrides(silent = false) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ovSheet = _getOrCreateOverridesSheet(ss);
 
-  // Temporarily disable both rule tables so getCategoryLogic returns raw algorithm output
-  const savedLR = _learnedRules;
+  // Disable only the temporary override inbox during the scan — Learned Rules stay active
+  // because they represent the permanent "correct" answer. If a job sheet matches a learned
+  // rule, that's not a discrepancy. Only items where neither learned rules nor the algorithm
+  // produce the right answer should land in the inbox.
   const savedOV = _categoryOverrides;
-  _learnedRules      = new Map();
   _categoryOverrides = new Map();
 
   const gsidSheet = ss.getSheetByName("GSID Database");
@@ -302,7 +303,6 @@ function updateCategoryOverrides(silent = false) {
       }
     }
   } finally {
-    _learnedRules      = savedLR;
     _categoryOverrides = savedOV;
   }
 
