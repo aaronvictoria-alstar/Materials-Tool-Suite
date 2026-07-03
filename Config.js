@@ -253,11 +253,31 @@ function getUnifiedItemKey(bomId, description) {
 }
 
 // ==========================================
-// CATEGORY OVERRIDE LOADER
+// CATEGORY RULE LOADERS
 // ==========================================
-// Lazy-loads the "Category Overrides" tab into memory once per script execution.
-// All getCategoryLogic calls within the same execution reuse this cached map.
+// Two lazy-loaded lookup tables, each read once per script execution and reused across all
+// getCategoryLogic calls. Learned Rules are permanent promoted corrections; Category Overrides
+// are the nightly-wiped inbox for newly detected discrepancies.
+let _learnedRules     = null;
 let _categoryOverrides = null;
+
+function _loadLearnedRules() {
+  if (_learnedRules !== null) return _learnedRules;
+  _learnedRules = new Map();
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Learned Rules");
+    if (sheet && sheet.getLastRow() >= 2) {
+      const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+      for (const row of data) {
+        const key = row[0] ? row[0].toString().trim() : "";
+        const cat = row[3] ? row[3].toString().trim() : "";
+        const sub = row[4] ? row[4].toString().trim() : "";
+        if (key && cat) _learnedRules.set(key, { category: cat, subcat: sub });
+      }
+    }
+  } catch(e) {}
+  return _learnedRules;
+}
 
 function _loadCategoryOverrides() {
   if (_categoryOverrides !== null) return _categoryOverrides;
@@ -293,12 +313,17 @@ function getCategoryLogic(bomId, description) {
   const sizeMatch = dUpper.match(/(?:^|[^0-9])(\d+(?:\.\d+)?)(?:\s+\d+\/\d+)?\s*(?:\"|IN|INCH)/);
   const size = sizeMatch ? parseFloat(sizeMatch[1]) : 0;
 
-  // Check override table — BOM ID is primary key; normalized description is fallback
+  // Lookup order: Learned Rules (permanent) → Category Overrides (nightly inbox) → algorithm
+  const _key = bUpper || ("NOBOM_" + normalizeDescription(description).replace(/[^A-Z0-9]/g, "_"));
+  const _lr = _loadLearnedRules();
+  if (_lr.has(_key)) {
+    const m = _lr.get(_key);
+    return { category: m.category, subcat: m.subcat || "Misc", size };
+  }
   const _ov = _loadCategoryOverrides();
-  const _ovKey = bUpper || ("NOBOM_" + normalizeDescription(description).replace(/[^A-Z0-9]/g, "_"));
-  if (_ov.has(_ovKey)) {
-    const match = _ov.get(_ovKey);
-    return { category: match.category, subcat: match.subcat || "Misc", size };
+  if (_ov.has(_key)) {
+    const m = _ov.get(_key);
+    return { category: m.category, subcat: m.subcat || "Misc", size };
   }
 
   let tag = "";
