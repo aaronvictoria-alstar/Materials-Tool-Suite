@@ -174,7 +174,7 @@ function updateGSIDDatabase() {
           const qRow = qFabSheet.getLastRow(), qCol = qFabSheet.getLastColumn();
           if (qRow > 0 && qCol > 0) {
             const topRows       = qFabSheet.getRange(1, 1, Math.min(12, qRow), qCol).getValues();
-            spoolValid          = findHeaderCoord(topRows, ["SPOOL"]);
+            spoolValid          = findHeaderCoord(topRows, ["SPOOL"], true);
             inchValid           = findHeaderCoord(topRows, ["INCH", "DIAMETER"]);
             fabIssuedValid      = findHeaderCoord(topRows, ["ISSUEDTOSHOP"]);
             qcprPriorityValid   = findHeaderCoord(topRows, ["PRIORITYNAME", "PRIORITY"]);
