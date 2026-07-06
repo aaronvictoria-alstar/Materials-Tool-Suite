@@ -327,6 +327,7 @@ function searchAndPullFromVista() {
     const hLocCol  = findCol(hHeaders, ["Location", "Full Location"]);
     const hQtyCol  = findCol(hHeaders, ["Qty", "Quantity"]);
     const hPoCol   = findCol(hHeaders, ["PO", "PO #", "PO Number"]);
+    const hTypeCol = findCol(hHeaders, ["Type"]);
     if (hBomCol > -1) {
       for (let i = 1; i < historyData.length; i++) {
         const row  = historyData[i];
@@ -344,11 +345,12 @@ function searchAndPullFromVista() {
         const hHeat = hHeatCol > -1 ? row[hHeatCol].toString().trim() : "";
         const hLoc  = hLocCol  > -1 ? row[hLocCol].toString().trim()  : "";
         const hQty  = hQtyCol  > -1 ? parseFloat(row[hQtyCol]) || 0 : 0;
+        const hType = hTypeCol > -1 ? row[hTypeCol].toString().trim().toUpperCase() : "";
 
         const hMapKey = hBom || ("NOBOM_" + normalizeDescription(hDesc).replace(/[^A-Z0-9]/g, "_"));
 
         if (!historyMap[hMapKey]) historyMap[hMapKey] = { heats: new Set(), locs: new Set(), localRecvThisPo: 0 };
-        if (isMatchPO) {
+        if (isMatchPO && hType !== "QUARANTINE") {
           historyMap[hMapKey].localRecvThisPo += hQty;
         }
 
