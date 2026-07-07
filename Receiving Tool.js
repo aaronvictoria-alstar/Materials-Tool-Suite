@@ -347,7 +347,7 @@ function searchAndPullFromVista() {
         const hQty  = hQtyCol  > -1 ? parseFloat(row[hQtyCol]) || 0 : 0;
         const hType = hTypeCol > -1 ? row[hTypeCol].toString().trim().toUpperCase() : "";
 
-        const hMapKey = hBom || ("NOBOM_" + normalizeDescription(hDesc).replace(/[^A-Z0-9]/g, "_"));
+        const hMapKey = getUnifiedItemKey(hBom, hDesc);
 
         if (!historyMap[hMapKey]) historyMap[hMapKey] = { heats: new Set(), locs: new Set(), localRecvThisPo: 0 };
         if (isMatchPO && hType !== "QUARANTINE") {
@@ -367,7 +367,7 @@ function searchAndPullFromVista() {
   const pushArr = { poLine: [], desc: [], bom: [], qty: [], qtyNotes: [], heat1: [], heat2: [], loc: [], updateLoc: [], notes: [], bgColors: [], sysStatus: [] };
 
   for (const item of pulledItems) {
-    const searchMapKey = item.bom || ("NOBOM_" + normalizeDescription(item.desc).replace(/[^A-Z0-9]/g, "_"));
+    const searchMapKey = getUnifiedItemKey(item.bom, item.desc);
     const hist = historyMap[searchMapKey];
     const localRecvThisPo = hist ? hist.localRecvThisPo : 0;
 
