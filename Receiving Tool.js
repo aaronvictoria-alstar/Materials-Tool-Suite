@@ -318,7 +318,8 @@ function searchAndPullFromVista() {
 
   // --- 2. PULL FROM LOCAL HISTORY ---
   const historyData = updateRawDataTab(jobNum, clientName, "RT Data", true);
-  const historyMap  = {};
+  const historyQtyMap = {};  // keyed by BOM+desc — tracks received qty per invoicing line
+  const historyBomMap = {};  // keyed by BOM only — pools heats and locations across variants
   if (historyData && historyData.length > 0) {
     const hHeaders = sanitizeHeaders(historyData[0]);
     const hBomCol  = findCol(hHeaders, ["BOMID"]);
@@ -347,17 +348,19 @@ function searchAndPullFromVista() {
         const hQty  = hQtyCol  > -1 ? parseFloat(row[hQtyCol]) || 0 : 0;
         const hType = hTypeCol > -1 ? row[hTypeCol].toString().trim().toUpperCase() : "";
 
-        const hMapKey = getUnifiedItemKey(hBom, hDesc);
+        const hQtyKey = getUnifiedItemKey(hBom, hDesc);
+        const hBomKey = hBom || ("NOBOM_" + normalizeDescription(hDesc).replace(/[^A-Z0-9]/g, "_"));
 
-        if (!historyMap[hMapKey]) historyMap[hMapKey] = { heats: new Set(), locs: new Set(), localRecvThisPo: 0 };
+        if (!historyQtyMap[hQtyKey]) historyQtyMap[hQtyKey] = { localRecvThisPo: 0 };
         if (isMatchPO && hType !== "QUARANTINE") {
-          historyMap[hMapKey].localRecvThisPo += hQty;
+          historyQtyMap[hQtyKey].localRecvThisPo += hQty;
         }
 
-        if (hHeat) hHeat.split(/[\n,;]+/).forEach(h => { if (h.trim()) historyMap[hMapKey].heats.add(h.trim()); });
+        if (!historyBomMap[hBomKey]) historyBomMap[hBomKey] = { heats: new Set(), locs: new Set() };
+        if (hHeat) hHeat.split(/[\n,;]+/).forEach(h => { if (h.trim()) historyBomMap[hBomKey].heats.add(h.trim()); });
         if (hLoc) hLoc.split(/[\n,;]+/).forEach(l => {
           const cleanL = l.trim();
-          if (cleanL && !["K+R", "QUARANTINE", "LEGACY"].includes(cleanL.toUpperCase())) historyMap[hMapKey].locs.add(cleanL);
+          if (cleanL && !["K+R", "QUARANTINE", "LEGACY"].includes(cleanL.toUpperCase())) historyBomMap[hBomKey].locs.add(cleanL);
         });
       }
     }
@@ -367,9 +370,11 @@ function searchAndPullFromVista() {
   const pushArr = { poLine: [], desc: [], bom: [], qty: [], qtyNotes: [], heat1: [], heat2: [], loc: [], updateLoc: [], notes: [], bgColors: [], sysStatus: [] };
 
   for (const item of pulledItems) {
-    const searchMapKey = getUnifiedItemKey(item.bom, item.desc);
-    const hist = historyMap[searchMapKey];
-    const localRecvThisPo = hist ? hist.localRecvThisPo : 0;
+    const searchQtyKey = getUnifiedItemKey(item.bom, item.desc);
+    const searchBomKey = item.bom || ("NOBOM_" + normalizeDescription(item.desc).replace(/[^A-Z0-9]/g, "_"));
+    const histQty = historyQtyMap[searchQtyKey];
+    const histBom = historyBomMap[searchBomKey];
+    const localRecvThisPo = histQty ? histQty.localRecvThisPo : 0;
 
     let trueRemaining = item.ordered - localRecvThisPo;
     if (item.bom.includes("PIPE")) trueRemaining = trueRemaining.toFixed(2);
@@ -430,11 +435,11 @@ function searchAndPullFromVista() {
     pushArr.notes.push([noteStr]);
     pushArr.bgColors.push([bgColor]);
 
-    // Format Heats and Locations
+    // Format Heats and Locations (pooled at BOM level so all variants share the same bin and heats)
     let heatStr1 = "", heatStr2 = "", locStr = "";
-    if (hist) {
-      const heatArr = Array.from(hist.heats).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-      const locArr  = Array.from(hist.locs).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    if (histBom) {
+      const heatArr = Array.from(histBom.heats).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      const locArr  = Array.from(histBom.locs).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
       const leftHeats = [], rightHeats = [];
       heatArr.forEach((h, i) => { if (i % 2 === 0) leftHeats.push(h); else rightHeats.push(h); });
       if (leftHeats.length > 0) heatStr1 = leftHeats.join("\n");
