@@ -354,9 +354,8 @@ function loadPivotData() {
       }
 
     } else if (type === "KITTED // ISSUED" || type === "KITTED" || type === "KIT" || type === "ISSUED" || type === "ISSUE") {
-      item.netQty -= qty;
       item.kittedQty += qty;
-      // grossRecv unchanged — item was received, just issued to shop
+      // netQty and grossRecv unchanged — item was received, just issued to shop
 
     } else if (type === "TRANSFER OUT") {
       item.netQty -= qty;
@@ -572,7 +571,7 @@ function loadPivotData() {
       heatCol1.join("\n") || "--", // 5
       heatCol2.join("\n") || "",   // 6
       locStr,                      // 7
-      fmt(item.netQty),            // 8 — per-variant yard quantity
+      fmt(Math.max(0, item.netQty - item.quarantinedQty)),  // 8 — yard qty: received minus transfer-outs, clamped at 0 (quarantine never goes negative)
       fmt(mmtRecv),                // 9
       fmtDelta(deltaShopMmt),      // 10
       fmt(mmtReq),                 // 11
