@@ -365,7 +365,7 @@ function loadPivotData() {
     } else if (type === "QUARANTINE") {
       item.netQty -= qty;
       item.quarantinedQty += qty;
-      item.grossRecv -= qty;  // quarantined material does not count as received
+      // grossRecv unchanged — quarantine rows count as 0 received, not negative
     }
 
     // Track issued-out locations from every row for the Locations column display
