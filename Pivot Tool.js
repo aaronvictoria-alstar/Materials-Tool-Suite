@@ -320,6 +320,7 @@ function loadPivotData() {
         desc: desc,
         bom: bomId,
         netQty: 0,
+        grossRecv: 0,
         heats: new Set(),
         locs: new Set(),
         issuedLocs: new Set(),
@@ -343,7 +344,8 @@ function loadPivotData() {
 
 
     if (type === "REC" || type === "RETURN" || type === "SURPLUS" || type === "TRANSFER IN") {
-      item.netQty += qty;
+      item.netQty   += qty;
+      item.grossRecv += qty;  // counts toward vendor receipt total
 
       if (invPo) {
         if (!item.poDetails[invPo]) item.poDetails[invPo] = { qty: 0, pls: new Set() };
@@ -354,13 +356,16 @@ function loadPivotData() {
     } else if (type === "KITTED // ISSUED" || type === "KITTED" || type === "KIT" || type === "ISSUED" || type === "ISSUE") {
       item.netQty -= qty;
       item.kittedQty += qty;
+      // grossRecv unchanged — item was received, just issued to shop
 
     } else if (type === "TRANSFER OUT") {
       item.netQty -= qty;
+      // grossRecv unchanged — item was received, just transferred out
 
     } else if (type === "QUARANTINE") {
       item.netQty -= qty;
       item.quarantinedQty += qty;
+      item.grossRecv -= qty;  // quarantined material does not count as received
     }
 
     // Track issued-out locations from every row for the Locations column display
@@ -407,8 +412,9 @@ function loadPivotData() {
   const bomAggMap = {};
   for (const [, item] of inventoryMap) {
     if (!item.bom) continue;
-    if (!bomAggMap[item.bom]) bomAggMap[item.bom] = { netQty: 0, kittedQty: 0, poDetails: {} };
+    if (!bomAggMap[item.bom]) bomAggMap[item.bom] = { netQty: 0, grossRecv: 0, kittedQty: 0, poDetails: {} };
     bomAggMap[item.bom].netQty    += item.netQty;
+    bomAggMap[item.bom].grossRecv += item.grossRecv;
     bomAggMap[item.bom].kittedQty += item.kittedQty;
     for (const po in item.poDetails) {
       if (!bomAggMap[item.bom].poDetails[po]) bomAggMap[item.bom].poDetails[po] = { qty: 0, pls: new Set() };
@@ -424,7 +430,7 @@ function loadPivotData() {
 
     const bomAgg = item.bom && bomAggMap[item.bom] ? bomAggMap[item.bom] : null;
     // Per-variant quantities for display columns; BOM aggregates for delta math
-    let shopQtyCalc    = bomAgg ? bomAgg.netQty    : item.netQty;
+    let shopQtyCalc    = bomAgg ? bomAgg.grossRecv : item.grossRecv;
     let shopKittedCalc = bomAgg ? bomAgg.kittedQty : item.kittedQty;
     const shopPoDetails = bomAgg ? bomAgg.poDetails : item.poDetails;
     let mmtRecv      = mInfo.recv;
