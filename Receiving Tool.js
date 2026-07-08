@@ -352,7 +352,7 @@ function searchAndPullFromVista() {
         const hBomKey = hBom || ("NOBOM_" + normalizeDescription(hDesc).replace(/[^A-Z0-9]/g, "_"));
 
         if (!historyQtyMap[hQtyKey]) historyQtyMap[hQtyKey] = { localRecvThisPo: 0 };
-        if (isMatchPO && hType !== "QUARANTINE") {
+        if (isMatchPO && isGrossReceipt(hType)) {
           historyQtyMap[hQtyKey].localRecvThisPo += hQty;
         }
 

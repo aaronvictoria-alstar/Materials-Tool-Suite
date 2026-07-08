@@ -219,6 +219,23 @@ function getJobCoordinatesFromGSID(jobNum) {
   return null;
 }
 
+// Returns true for inventory row types that represent a physical receipt from a vendor.
+// Used in both PT (grossRecv accumulation) and RT (localRecvThisPo accumulation).
+// NOTE: KITTED is intentionally excluded — it is handled separately via effectiveRecv
+// in the PT display layer (max(grossRecv, kittedQty)) to avoid double-counting when
+// both a REC row and a KITTED row exist for the same item.
+function isGrossReceipt(type) {
+  const t = type ? type.toString().trim().toUpperCase() : "";
+  return t === "REC" || t === "SURPLUS" || t === "TRANSFER IN" || t === "RETURN";
+}
+
+// Returns true for inventory row types that represent a kitted/issued release.
+// Centralised here so the multi-variant type string is defined in one place.
+function isKittedType(type) {
+  const t = type ? type.toString().trim().toUpperCase() : "";
+  return t === "KITTED // ISSUED" || t === "KITTED" || t === "KIT" || t === "ISSUED" || t === "ISSUE";
+}
+
 // ==========================================
 // UPGRADED INTELLIGENT MATCHING & DE-DUPLICATION HELPERS
 // ==========================================

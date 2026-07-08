@@ -343,7 +343,7 @@ function loadPivotData() {
 
 
 
-    if (type === "REC" || type === "RETURN" || type === "SURPLUS" || type === "TRANSFER IN") {
+    if (isGrossReceipt(type)) {
       item.netQty   += qty;
       item.grossRecv += qty;  // counts toward vendor receipt total
 
@@ -353,7 +353,7 @@ function loadPivotData() {
         if (formVal) item.poDetails[invPo].pls.add(formVal);
       }
 
-    } else if (type === "KITTED // ISSUED" || type === "KITTED" || type === "KIT" || type === "ISSUED" || type === "ISSUE") {
+    } else if (isKittedType(type)) {
       item.kittedQty += qty;
       // netQty and grossRecv unchanged — item was received, just issued to shop
 
@@ -428,8 +428,15 @@ function loadPivotData() {
     const mInfo = mmtInfo[item.bom] || { req: 0, recv: 0, mmtKitted: 0, pos: {}, desc: "" };
 
     const bomAgg = item.bom && bomAggMap[item.bom] ? bomAggMap[item.bom] : null;
-    // Per-variant quantities for display columns; BOM aggregates for delta math
-    let shopQtyCalc    = bomAgg ? bomAgg.grossRecv : item.grossRecv;
+    // KITTED rows count as received even when there is no separate REC row (item arrived
+    // and was immediately released). effectiveRecv ensures KITTED-only entries show the
+    // correct received qty. transferOutQty is back-computed from the accounting fields.
+    const transferOutQty = item.grossRecv - item.netQty - item.quarantinedQty;
+    const effectiveRecv  = Math.max(item.grossRecv, item.kittedQty);
+    // Per-variant quantities for display columns; BOM aggregates for delta math.
+    // shopQtyCalc also uses max(grossRecv, kittedQty) so KITTED-only BOMs aren't
+    // misreported as 0 received in the delta column.
+    let shopQtyCalc    = bomAgg ? Math.max(bomAgg.grossRecv, bomAgg.kittedQty) : effectiveRecv;
     let shopKittedCalc = bomAgg ? bomAgg.kittedQty : item.kittedQty;
     const shopPoDetails = bomAgg ? bomAgg.poDetails : item.poDetails;
     let mmtRecv      = mInfo.recv;
@@ -571,7 +578,7 @@ function loadPivotData() {
       heatCol1.join("\n") || "--", // 5
       heatCol2.join("\n") || "",   // 6
       locStr,                      // 7
-      fmt(Math.max(0, item.netQty - item.quarantinedQty)),  // 8 — yard qty: received minus transfer-outs, clamped at 0 (quarantine never goes negative)
+      fmt(Math.max(0, effectiveRecv - transferOutQty)),   // 8 — yard qty: received (incl. kitted-only) minus transfer-outs
       fmt(mmtRecv),                // 9
       fmtDelta(deltaShopMmt),      // 10
       fmt(mmtReq),                 // 11
